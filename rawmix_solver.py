@@ -17,9 +17,9 @@ class MaterialComp:
     MgO: float = 0.0
     Na2O: float = 0.0
     K2O: float = 0.0
-    Cl: float = 0.0
-    LOI: float
-    H2O: float
+    SO3: float = 0.0
+    LOI: float = 0.0
+    H2O: float = 0.0
 
 
 MATERIAL_NAMES = ["limestone", "shale", "sand", "pyrite"]
@@ -74,7 +74,7 @@ def _clinker_basis(materials: dict[str, MaterialComp]) -> dict[str, dict[str, fl
             "MgO": comp.MgO / factor,
             "Na2O": comp.Na2O / factor,
             "K2O": comp.K2O / factor,
-            "Cl": comp.Cl / factor,
+            "SO3": comp.SO3 / factor,
         }
     return cl_basis
 
@@ -98,7 +98,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     hfo_cal = float(hfo.get("calorific", 9800))
     hfo_sulfur = float(hfo.get("sulfur", 2.5))
 
-    cl_so3 = _fuel_so3(hfo_heat, hfo_cal, hfo_sulfur)
+    cl_so3_fuel = _fuel_so3(hfo_heat, hfo_cal, hfo_sulfur)
     cl_basis = _clinker_basis(materials)
     x5 = 0.0
 
@@ -123,7 +123,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             [deltas[n]["dA"] for n in MATERIAL_NAMES],
             [1.0, 1.0, 1.0, 1.0],
         ]
-        B = [70.0 * cl_so3, 0.0, 0.0, 100.0]
+        B = [70.0 * cl_so3_fuel, 0.0, 0.0, 100.0]
         X = _solve4x4(M, B)
         if X is None or any(v < 0 for v in X):
             raise ValueError(
@@ -147,7 +147,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         x_cl = [(c_dry[i] / total_cl) * (100.0 - x5) for i in range(4)] + [x5]
 
     clinker_chem: dict[str, float] = {}
-    for oxide in ("SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "Na2O", "K2O", "Cl"):
+    for oxide in ("SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "Na2O", "K2O", "SO3"):
         val = sum(x_cl[i] * cl_basis[MATERIAL_NAMES[i]][oxide] for i in range(4))
         clinker_chem[oxide] = val / 100.0
 
@@ -158,13 +158,14 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     mgo = clinker_chem["MgO"]
     na2o = clinker_chem["Na2O"]
     k2o = clinker_chem["K2O"]
-    cl = clinker_chem["Cl"]
+    cl_so3_raw = clinker_chem["SO3"]
+    cl_so3_total = cl_so3_raw + cl_so3_fuel
 
-    cl_lsf = clinker_lsf_percent(cao, sio2, al2o3, fe2o3, cl_so3)
+    cl_lsf = clinker_lsf_percent(cao, sio2, al2o3, fe2o3, cl_so3_total)
     cl_sm = sio2 / (al2o3 + fe2o3) if (al2o3 + fe2o3) else 0.0
     cl_am = al2o3 / fe2o3 if fe2o3 else 0.0
 
-    c3s = 4.071 * (cao - 0.7 * cl_so3) - 7.600 * sio2 - 6.718 * al2o3 - 1.430 * fe2o3
+    c3s = 4.071 * (cao - 0.7 * cl_so3_total) - 7.600 * sio2 - 6.718 * al2o3 - 1.430 * fe2o3
     c2s = 2.867 * sio2 - 0.7544 * c3s
     c3a = 2.650 * al2o3 - 1.692 * fe2o3
     c4af = 3.043 * fe2o3
@@ -201,8 +202,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             "MgO": round(mgo, 2),
             "Na2O": round(na2o, 2),
             "K2O": round(k2o, 2),
-            "Cl": round(cl, 3),
-            "SO3": round(cl_so3, 2),
+            "SO3": round(cl_so3_total, 2),
             "LSF": round(cl_lsf, 1),
             "SM": round(cl_sm, 2),
             "AM": round(cl_am, 2),

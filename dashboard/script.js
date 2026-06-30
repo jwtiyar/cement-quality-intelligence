@@ -940,7 +940,7 @@ async function calculateRawMixProportions() {
             MgO: parseFloat(document.getElementById('raw_ls_MgO').value),
             Na2O: parseFloat(document.getElementById('raw_ls_Na2O').value),
             K2O: parseFloat(document.getElementById('raw_ls_K2O').value),
-            Cl: parseFloat(document.getElementById('raw_ls_Cl').value),
+            SO3: parseFloat(document.getElementById('raw_ls_SO3').value),
             LOI: parseFloat(document.getElementById('raw_ls_LOI').value),
             H2O: parseFloat(document.getElementById('raw_ls_H2O').value)
         },
@@ -952,7 +952,7 @@ async function calculateRawMixProportions() {
             MgO: parseFloat(document.getElementById('raw_sh_MgO').value),
             Na2O: parseFloat(document.getElementById('raw_sh_Na2O').value),
             K2O: parseFloat(document.getElementById('raw_sh_K2O').value),
-            Cl: parseFloat(document.getElementById('raw_sh_Cl').value),
+            SO3: parseFloat(document.getElementById('raw_sh_SO3').value),
             LOI: parseFloat(document.getElementById('raw_sh_LOI').value),
             H2O: parseFloat(document.getElementById('raw_sh_H2O').value)
         },
@@ -964,7 +964,7 @@ async function calculateRawMixProportions() {
             MgO: parseFloat(document.getElementById('raw_sd_MgO').value),
             Na2O: parseFloat(document.getElementById('raw_sd_Na2O').value),
             K2O: parseFloat(document.getElementById('raw_sd_K2O').value),
-            Cl: parseFloat(document.getElementById('raw_sd_Cl').value),
+            SO3: parseFloat(document.getElementById('raw_sd_SO3').value),
             LOI: parseFloat(document.getElementById('raw_sd_LOI').value),
             H2O: parseFloat(document.getElementById('raw_sd_H2O').value)
         },
@@ -976,7 +976,7 @@ async function calculateRawMixProportions() {
             MgO: parseFloat(document.getElementById('raw_py_MgO').value),
             Na2O: parseFloat(document.getElementById('raw_py_Na2O').value),
             K2O: parseFloat(document.getElementById('raw_py_K2O').value),
-            Cl: parseFloat(document.getElementById('raw_py_Cl').value),
+            SO3: parseFloat(document.getElementById('raw_py_SO3').value),
             LOI: parseFloat(document.getElementById('raw_py_LOI').value),
             H2O: parseFloat(document.getElementById('raw_py_H2O').value)
         }
@@ -1045,7 +1045,6 @@ async function calculateRawMixProportions() {
         document.getElementById('cl_MgO').innerText = cl.MgO;
         document.getElementById('cl_Na2O').innerText = cl.Na2O;
         document.getElementById('cl_K2O').innerText = cl.K2O;
-        document.getElementById('cl_Cl').innerText = cl.Cl;
         document.getElementById('cl_SO3').innerText = cl.SO3;
         document.getElementById('cl_LSF').innerText = cl.LSF;
         document.getElementById('cl_SM').innerText = cl.SM;
@@ -1079,9 +1078,9 @@ async function calculateRawMixProportions() {
     }
 }
 const rawMixCorrections = {
-    OPC: { SiO2: 34.50, Al2O3: 12.10, Fe2O3: 1.20, CaO: 41.30, MgO: 5.50, Na2O: 0.20, K2O: 0.50, Cl: 0.01, LOI: 0.80, H2O: 6.5 },
-    SBC: { SiO2: 34.50, Al2O3: 12.10, Fe2O3: 1.20, CaO: 41.30, MgO: 5.50, Na2O: 0.20, K2O: 0.50, Cl: 0.01, LOI: 0.80, H2O: 6.5 },
-    SRC: { SiO2: 20.10, Al2O3: 2.43, Fe2O3: 74.60, CaO: 0.94, MgO: 0.30, Na2O: 0.10, K2O: 0.10, Cl: 0.01, LOI: 1.56, H2O: 7.8 }
+    OPC: { SiO2: 34.50, Al2O3: 12.10, Fe2O3: 1.20, CaO: 41.30, MgO: 5.50, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.80, H2O: 6.5 },
+    SBC: { SiO2: 34.50, Al2O3: 12.10, Fe2O3: 1.20, CaO: 41.30, MgO: 5.50, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.80, H2O: 6.5 },
+    SRC: { SiO2: 20.10, Al2O3: 2.43, Fe2O3: 74.60, CaO: 0.94, MgO: 0.30, Na2O: 0.10, K2O: 0.10, SO3: 0.10, LOI: 1.56, H2O: 7.8 }
 };
 let rawCementType = 'OPC';
 
@@ -1107,7 +1106,7 @@ function setupRawMixCalculator() {
                 MgO: parseFloat(document.getElementById('raw_py_MgO').value) || 0,
                 Na2O: parseFloat(document.getElementById('raw_py_Na2O').value) || 0,
                 K2O: parseFloat(document.getElementById('raw_py_K2O').value) || 0,
-                Cl: parseFloat(document.getElementById('raw_py_Cl').value) || 0,
+                SO3: parseFloat(document.getElementById('raw_py_SO3').value) || 0,
                 LOI: parseFloat(document.getElementById('raw_py_LOI').value) || 0,
                 H2O: parseFloat(document.getElementById('raw_py_H2O').value) || 0
             };
@@ -1131,7 +1130,7 @@ function setupRawMixCalculator() {
             document.getElementById('raw_py_MgO').value = newChem.MgO.toFixed(2);
             document.getElementById('raw_py_Na2O').value = newChem.Na2O.toFixed(2);
             document.getElementById('raw_py_K2O').value = newChem.K2O.toFixed(2);
-            document.getElementById('raw_py_Cl').value = newChem.Cl.toFixed(3);
+            document.getElementById('raw_py_SO3').value = newChem.SO3.toFixed(2);
             document.getElementById('raw_py_LOI').value = newChem.LOI.toFixed(2);
             document.getElementById('raw_py_H2O').value = newChem.H2O.toFixed(1);
 
