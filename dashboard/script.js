@@ -1186,6 +1186,3 @@ function setupRawMixCalculator() {
         });
     }
 }
-
-}
-
