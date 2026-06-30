@@ -1,0 +1,91 @@
+"""Load and normalize the consolidated cement CSV."""
+
+from __future__ import annotations
+
+import os
+
+import numpy as np
+import pandas as pd
+
+CEMENT_TYPES = ["OPC", "SRC", "SBC"]
+ML_EXCLUDED_YEARS = {2019}
+
+NUMERIC_COLS = [
+    "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
+    "LSF", "C3S", "C3A", "Fineness",
+    "Strength_Early", "Strength_28D", "Early_Strength_Days",
+]
+
+
+def default_csv_path() -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "ALL_CEMENT_DATA.csv")
+
+
+def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
+    path = csv_path or default_csv_path()
+    df = pd.read_csv(path)
+
+    if "Cmp.St. Mpa_3 day" in df.columns and "3 day" in df.columns:
+        df["Strength_3D"] = df["Cmp.St. Mpa_3 day"].combine_first(df["3 day"])
+    elif "Cmp.St. Mpa_3 day" in df.columns:
+        df["Strength_3D"] = df["Cmp.St. Mpa_3 day"]
+    elif "3 day" in df.columns:
+        df["Strength_3D"] = df["3 day"]
+    else:
+        df["Strength_3D"] = np.nan
+
+    if "Cmp.St. Mpa_2 day" in df.columns and "2 day" in df.columns:
+        df["Strength_2D"] = df["Cmp.St. Mpa_2 day"].combine_first(df["2 day"])
+    elif "Cmp.St. Mpa_2 day" in df.columns:
+        df["Strength_2D"] = df["Cmp.St. Mpa_2 day"]
+    elif "2 day" in df.columns:
+        df["Strength_2D"] = df["2 day"]
+    else:
+        df["Strength_2D"] = np.nan
+
+    df["Strength_Early"] = df["Strength_3D"].combine_first(df["Strength_2D"])
+    df["Early_Strength_Days"] = np.where(
+        df["Strength_3D"].notna(),
+        3,
+        np.where(df["Strength_2D"].notna(), 2, np.nan),
+    )
+
+    if "28 day" in df.columns and "28 days" in df.columns:
+        df["Strength_28D"] = df["28 day"].combine_first(df["28 days"])
+    elif "28 day" in df.columns:
+        df["Strength_28D"] = df["28 day"]
+    elif "28 days" in df.columns:
+        df["Strength_28D"] = df["28 days"]
+    else:
+        df["Strength_28D"] = np.nan
+
+    fin_cols = [c for c in df.columns if "SSB" in c]
+    if fin_cols:
+        df["Fineness"] = df[fin_cols[0]]
+        for col in fin_cols[1:]:
+            df["Fineness"] = df["Fineness"].combine_first(df[col])
+    else:
+        df["Fineness"] = np.nan
+
+    if "L.S.F" in df.columns:
+        df["LSF"] = df["L.S.F"]
+
+    for col in NUMERIC_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", "."), errors="coerce")
+
+    df = df.dropna(subset=["Year", "Cement_Type"])
+    df["Year"] = df["Year"].astype(int)
+    df["Date_str"] = pd.to_datetime(df["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    df["Date_dt"] = pd.to_datetime(df["Date"], errors="coerce")
+    return df
+
+
+def ml_training_frame(df: pd.DataFrame, cement_type: str) -> pd.DataFrame:
+    """Rows eligible for 28-day strength model training."""
+    return df[
+        (df["Cement_Type"] == cement_type)
+        & (~df["Year"].isin(ML_EXCLUDED_YEARS))
+        & df["Strength_28D"].notna()
+    ].copy()

@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cement Quality Intelligence & ML Predictor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=2">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="background-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <div class="container">
+        <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h1>Cement Quality <span>Intelligence</span> & ML</h1>
+                <p>14-Year Data Analysis & Predictive XGBoost Engine</p>
+            </div>
+            <button id="btnSync" class="btn-predict" style="width: auto; padding: 0.8rem 1.5rem; font-size: 1rem; margin: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                🔄 Sync Live Excel Data
+            </button>
+        </header>
+
+        <!-- Summary Statistics Cards -->
+        <div class="summary-cards">
+            <div class="card glass">
+                <h3>Total Records</h3>
+                <p id="totalRecords" class="value animate-pop">---</p>
+            </div>
+            <div class="card glass">
+                <h3>Avg 28-Day Strength</h3>
+                <p id="avgStrength" class="value animate-pop">--- <span class="unit">MPa</span></p>
+            </div>
+            <div class="card glass">
+                <h3>Avg C3S Content</h3>
+                <p id="avgC3S" class="value animate-pop">--- <span class="unit">%</span></p>
+            </div>
+            <div class="card glass">
+                <h3>Years Analyzed</h3>
+                <p id="yearsCoverage" class="value animate-pop">---</p>
+            </div>
+        </div>
+
+        <!-- Dashboard Layout -->
+
+        <!-- Tab Navigation -->
+        <div class="tabs-container" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+            <button class="btn-predict tab-btn" id="tabBtnAnalytics" onclick="switchTab('analytics')" style="flex: 1; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);">📊 Historical Analytics</button>
+            <button class="btn-predict tab-btn" id="tabBtnAI" onclick="switchTab('ai')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">🤖 AI Mix Optimizer</button>
+            <button class="btn-predict tab-btn" id="tabBtnRawMix" onclick="switchTab('rawmix')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">🧪 Raw Mix Design</button>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="tabAnalytics" style="display: block;">
+            <div class="dashboard-grid">
+
+                <!-- Interactive Parameter Graph -->
+                <div class="chart-container glass">
+                    <div class="chart-header">
+                        <h2>Parameter Evolution (2013-2026)</h2>
+                        <div class="selector-wrapper" style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
+                            <label for="paramSelector">Visualize: </label>
+                            <select id="paramSelector" class="glass-select">
+                                <option value="Strength_28D">28-Day Compressive Strength</option>
+                                <option value="Strength_Early">Early (2D/3D) Strength</option>
+                                <option value="C3S">Tricalcium Silicate (C3S %)</option>
+                                <option value="CaO">Lime (CaO %)</option>
+                                <option value="Fineness">Fineness / Blaine (cm²/g)</option>
+                                <option value="LSF">Lime Saturation Factor (LSF)</option>
+                            </select>
+                            <button id="btnExportCSV" class="btn-predict" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem; margin: 0; background: linear-gradient(135deg, #64748b 0%, #475569 100%); box-shadow: none;" title="Download full dataset as CSV">📥 Export CSV</button>
+                        </div>
+                    </div>
+                    <p id="trendChartSubtitle" style="font-size: 0.8rem; color: #f59e0b; margin: -0.5rem 0 0.8rem 0; display: none;"></p>
+                    <div class="chart-wrapper">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Monthly Analysis Graph -->
+                <div class="chart-container glass">
+                    <div class="chart-header">
+                        <h2>Daily Monthly Analysis</h2>
+                        <div class="selector-wrapper" style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+                            <select id="monthlyYear" class="glass-select">
+                                <!-- Populated dynamically -->
+                            </select>
+                            <select id="monthlyMonth" class="glass-select">
+                                <option value="1">January</option>
+                                <option value="2">February</option>
+                                <option value="3">March</option>
+                                <option value="4">April</option>
+                                <option value="5">May</option>
+                                <option value="6">June</option>
+                                <option value="7">July</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                            <select id="monthlyParam" class="glass-select">
+                                <option value="Strength_28D">28-Day Strength</option>
+                                <option value="Strength_Early">Early Strength</option>
+                                <option value="C3S">C3S %</option>
+                                <option value="CaO">CaO %</option>
+                                <option value="Fineness">Fineness (cm²/g)</option>
+                                <option value="LSF">LSF</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Correlation Grid -->
+                <div class="correlation-container glass span-full">
+                    <h2>Chemical & Physical Correlation Matrix (OPC)</h2>
+                    <p class="section-desc">A value close to +1.0 indicates a strong positive relationship, while -1.0 shows a strong negative relationship.</p>
+                    <div class="correlation-grid-wrapper">
+                        <table id="correlationTable">
+                            <!-- Populated dynamically -->
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Cement Type Distribution -->
+                <div class="chart-container glass">
+                    <h2>Dataset Distribution</h2>
+                    <p class="section-desc">Proportion of records by cement type across the entire dataset.</p>
+                    <div class="chart-wrapper" style="height: 300px;">
+                        <canvas id="distributionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Lowest strength days -->
+                <div class="anomalies-container glass">
+                    <h2>Lowest 28-Day Strength Days</h2>
+                    <p class="section-desc">Ten lowest recorded 28-day compressive strength results across all cement types.</p>
+                    <div class="table-responsive">
+                        <table id="anomalyTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>28D (MPa)</th>
+                                    <th>C3S (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div> <!-- End dashboard-grid for analytics -->
+        </div> <!-- End tabAnalytics -->
+
+        <!-- AI Tab -->
+        <div id="tabAI" style="display: none;">
+            <div class="dashboard-grid">
+                <!-- AI Predictor Panel -->
+                <div class="predictor-container glass">
+                    <h2>XGBoost 28D Strength Predictor</h2>
+                    
+                    <!-- Search Date Block -->
+                    <div class="search-record-block" style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--glass-border);">
+                        <h3 style="font-size: 0.95rem; margin-bottom: 0.8rem; color: var(--accent); font-weight: 500;">Load Historical Record by Date</h3>
+                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <div style="position: relative; display: inline-block; width: 150px;">
+                                <input type="text" id="searchDateDisplay" class="glass-select" style="padding: 0.4rem 0.6rem; font-size: 0.9rem; width: 100%; text-align: center; pointer-events: none;" value="07/04/2026" readonly>
+                                <input type="date" id="searchDate" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;" value="2026-04-07">
+                            </div>
+                            <button type="button" id="btnLoadRecord" class="btn-predict" style="width: auto; padding: 0.4rem 1rem; font-size: 0.9rem; margin-top: 0;">Load Record</button>
+                        </div>
+                        <div id="searchFeedback" style="font-size: 0.85rem; margin-top: 0.5rem; color: #10b981; display: none;"></div>
+                    </div>
+
+                    <div class="model-stats">
+                        <span id="modelR2">R²: --</span>
+                        <span id="modelRMSE">RMSE: -- MPa</span>
+                        <span id="modelConfidence" style="display:block; margin-top:0.4rem; font-size:0.85rem; color:#94a3b8;">--</span>
+                        <span id="modelTrainInfo" style="display:block; margin-top:0.25rem; font-size:0.8rem; color:#64748b;">--</span>
+                    </div>
+                    <p class="section-desc">Input parameters below to simulate changes and receive AI advice.</p>
+                    
+                    <div style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.8rem;">
+                        <label for="predictCementType" style="font-size: 0.9rem; color: var(--text-secondary); font-weight: 500;">Cement Type:</label>
+                        <select id="predictCementType" class="glass-select" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
+                            <option value="OPC">OPC (Ordinary Portland)</option>
+                            <option value="SRC">SRC (Sulfate Resisting)</option>
+                            <option value="SBC">SBC</option>
+                        </select>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>CaO (%)</label>
+                            <input type="number" id="opt_CaO" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>SiO2 (%)</label>
+                            <input type="number" id="opt_SiO2" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Al2O3 (%)</label>
+                            <input type="number" id="opt_Al2O3" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Fe2O3 (%)</label>
+                            <input type="number" id="opt_Fe2O3" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>MgO (%)</label>
+                            <input type="number" id="opt_MgO" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>SO3 (%)</label>
+                            <input type="number" id="opt_SO3" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Early Strength (MPa)</label>
+                            <input type="number" id="opt_Strength_Early" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Early Test Days (2 or 3)</label>
+                            <input type="number" id="opt_Early_Strength_Days" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Fineness / Blaine (cm²/g)</label>
+                            <input type="number" id="opt_Fineness" step="1">
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border)">
+                        <h4 style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 1px;">Calculated Chemistry (Bogue)</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 1rem; font-size: 1rem; margin-bottom: 1.5rem; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.8rem; justify-content: space-between;">
+                            <div><span style="color: #38bdf8;">C3S:</span> <br><span id="opt_res_C3S">--</span>%</div>
+                            <div><span style="color: #38bdf8;">C2S:</span> <br><span id="opt_res_C2S">--</span>%</div>
+                            <div><span style="color: #38bdf8;">C3A:</span> <br><span id="opt_res_C3A">--</span>%</div>
+                            <div><span style="color: #38bdf8;">C4AF:</span> <br><span id="opt_res_C4AF">--</span>%</div>
+                            <div><span style="color: #38bdf8;">LSF:</span> <br><span id="opt_res_LSF">--</span></div>
+                            <div><span style="color: #38bdf8;">SM:</span> <br><span id="opt_res_SM">--</span></div>
+                            <div><span style="color: #38bdf8;">AM:</span> <br><span id="opt_res_AM">--</span></div>
+                        </div>
+                    </div>
+
+                    <div id="predictionResult" class="prediction-result">
+                        <span class="label">AI Predicted 28-Day Strength:</span>
+                        <span class="value" id="opt_res_strength" style="color: #10b981;">--</span>
+                    </div>
+
+                    <div id="actualResultBox" class="prediction-result" style="margin-top: 0.8rem; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.2); display: none;">
+                        <span class="label">Actual 28-Day Strength (Lab):</span>
+                        <span class="value" id="actualStrengthVal" style="color: var(--accent);">--</span>
+                        <span class="unit">MPa</span>
+                    </div>
+
+                    <div id="opt_advice" style="margin-top: 1rem; padding: 1rem; background: rgba(56, 189, 248, 0.1); border-left: 4px solid #38bdf8; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0;">
+                        Load a historical record above or modify parameters to start simulating and receiving live clinkering feedback.
+                    </div>
+                </div>
+
+                <!-- Feature Importances -->
+                <div class="chart-container glass">
+                    <h2>Model Feature Importances (XGBoost)</h2>
+                    <p class="section-desc" id="importanceDesc">Relative influence of each parameter on the strength prediction.</p>
+                    <div class="chart-wrapper" style="height: 300px;">
+                        <canvas id="importanceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw Mix Design Tab -->
+        <div id="tabRawMix" style="display: none;">
+            <div class="dashboard-grid">
+                <!-- Raw Materials Inputs -->
+                <div class="predictor-container glass span-full" style="padding: 1.8rem;">
+                    <h2>Raw Material Compositions (%)</h2>
+                    <p class="section-desc" style="margin-bottom: 0.8rem;">Input the dry chemistry of your raw materials and their moisture content.</p>
+                    
+                    <!-- Cement Type selection in Raw Mix Design -->
+                    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.2rem; background: rgba(255,255,255,0.03); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                        <label for="raw_cement_type" style="font-size: 0.9rem; color: var(--accent); font-weight: 500; min-width: 130px;">Target Cement Type:</label>
+                        <select id="raw_cement_type" class="glass-select" style="padding: 0.3rem 0.5rem; flex: 1; font-family: 'Outfit'; font-size: 0.9rem; color: #fff; cursor: pointer;">
+                            <option value="OPC" selected>OPC (Ordinary Portland Cement) — uses Slag</option>
+                            <option value="SBC">SBC (Slag Blend Cement) — uses Slag</option>
+                            <option value="SRC">SRC (Sulfate Resisting Cement) — uses Iron Ore</option>
+                        </select>
+                    </div>
+                    
+                    <div style="overflow-x: auto; margin-bottom: 1.5rem;">
+                        <table class="rawmix-input-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--glass-border); text-align: left; color: var(--accent);">
+                                    <th style="padding: 0.4rem; text-align: left;">Material</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">SiO₂</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">Al₂O₃</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">Fe₂O₃</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">CaO</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">MgO</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">Na₂O</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">K₂O</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">Cl</th>
+                                    <th style="padding: 0.4rem; width: 8.5%; text-align: center;">LOI</th>
+                                    <th style="padding: 0.4rem; width: 9%; text-align: center;">H₂O (Moisture)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding: 0.6rem; font-weight: 500; color: #38bdf8;">1. Limestone</td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_SiO2" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="4.99" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_Al2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.07" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_Fe2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.56" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_CaO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="50.90" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_MgO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.20" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_Na2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.05" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_K2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.10" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_Cl" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.01" step="0.001"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_LOI" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="40.70" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_ls_H2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="5.0" step="0.1"></td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding: 0.6rem; font-weight: 500; color: #38bdf8;">2. Clay</td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_SiO2" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="54.50" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_Al2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="21.40" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_Fe2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="7.04" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_CaO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.40" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_MgO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="2.10" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_Na2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.80" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_K2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.50" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_Cl" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.02" step="0.001"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_LOI" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="9.34" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sh_H2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="8.5" step="0.1"></td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding: 0.6rem; font-weight: 500; color: #38bdf8;">3. Sand / Sandstone</td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_SiO2" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="90.10" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_Al2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="4.61" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_Fe2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.17" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_CaO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.28" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_MgO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.50" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_Na2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.10" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_K2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.20" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_Cl" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.00" step="0.001"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_LOI" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.14" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_sd_H2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="3.3" step="0.1"></td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td id="raw_material_4_label" style="padding: 0.6rem; font-weight: 500; color: #38bdf8;">4. Slag</td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_SiO2" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="34.50" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_Al2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="12.10" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_Fe2O3" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="1.20" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_CaO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="41.30" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_MgO" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="5.50" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_Na2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.20" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_K2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.50" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_Cl" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.01" step="0.001"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_LOI" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="0.80" step="0.01"></td>
+                                    <td style="padding: 0.4rem;"><input type="number" id="raw_py_H2O" class="glass-select" style="padding: 0.3rem; text-align: center; width: 100%;" value="6.5" step="0.1"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Mode Switcher Tabs -->
+                    <div class="rawmix-mode-tabs" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.8rem;">
+                        <button type="button" id="raw_mode_solve" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.9rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); font-family: 'Outfit', sans-serif; font-weight: 500; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">Mode: Solve for Targets</button>
+                        <button type="button" id="raw_mode_calc" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.9rem; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); border-radius: 6px; font-family: 'Outfit', sans-serif; font-weight: 500; color: var(--text-secondary); cursor: pointer;">Mode: Calculate from Recipe</button>
+                    </div>
+
+                    <!-- Target Setpoints / Recipe Inputs and Kiln Fuel Settings in a clean, vertical stack -->
+                    <div style="display: flex; flex-direction: column; gap: 1.2rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border);">
+                        
+                        <!-- Target Moduli Column (Solve Mode) -->
+                        <div id="rawmix_target_moduli_block" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
+                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0;">Target Clinker Moduli Setpoints</h3>
+                            <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_target_LSF" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target LSF (%)</label>
+                                    <input type="number" id="raw_target_LSF" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="95" step="0.5">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_target_SM" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target SM</label>
+                                    <input type="number" id="raw_target_SM" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="2.4" step="0.05">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_target_AM" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target AM</label>
+                                    <input type="number" id="raw_target_AM" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="1.8" step="0.05">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recipe Proportions Column (Calculate Mode, Hidden initially) -->
+                        <div id="rawmix_recipe_input_block" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
+                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0;">Dry Recipe Proportions (%)</h3>
+                            <div class="input-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; align-items: center;">
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_recipe_ls" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Limestone %</label>
+                                    <input type="number" id="raw_recipe_ls" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="72.33" step="0.01">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_recipe_sh" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Clay %</label>
+                                    <input type="number" id="raw_recipe_sh" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="26.92" step="0.01">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_recipe_sd" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Sand %</label>
+                                    <input type="number" id="raw_recipe_sd" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="0.54" step="0.01">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_recipe_py" id="raw_recipe_py_label" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Slag %</label>
+                                    <input type="number" id="raw_recipe_py" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="0.21" step="0.01">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Kiln Fuel Settings -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
+                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>🔥</span> HFO Combustion Settings
+                            </h3>
+                            <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_hfo_heat" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Heat Cons. (kcal/kg)</label>
+                                    <input type="number" id="raw_hfo_heat" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="730" step="5">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_hfo_cal" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">HFO Calorific (kcal/kg)</label>
+                                    <input type="number" id="raw_hfo_cal" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="9800" step="50">
+                                </div>
+                                <div class="form-group" style="text-align: center;">
+                                    <label for="raw_hfo_sulfur" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">HFO Sulfur (%)</label>
+                                    <input type="number" id="raw_hfo_sulfur" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="2.50" step="0.05">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.5rem; text-align: right;">
+                        <button type="button" id="btnCalculateRawMix" class="btn-predict" style="width: auto; padding: 0.6rem 2rem; font-size: 1rem; margin-top: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">Calculate Feeder Proportions</button>
+                    </div>
+                </div>
+                <!-- Results Card -->
+                <div class="predictor-container glass span-full" style="padding: 1.8rem;">
+                    <h2 id="rawmix_results_title">Calculated Proportions & Clinker Chemistry</h2>
+                    <p class="section-desc" style="margin-bottom: 1.2rem;">Dry/wet proportion results and expected clinker quality indicators.</p>
+                    
+                    <div id="rawmix_results_block" style="display: none;">
+                        <!-- Proportions dry/wet -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                            <div>
+                                <h3 style="color: var(--accent); font-weight: 500; font-size: 0.95rem; margin-bottom: 0.8rem; display: flex; justify-content: space-between;">
+                                    <span>Dry Proportions</span> 
+                                    <span style="font-size: 0.8rem; color: var(--text-secondary);">(Raw Mill Target)</span>
+                                </h3>
+                                <ul id="raw_result_dry" style="list-style: none; padding-left: 0; line-height: 1.8; font-size: 0.9rem;">
+                                    <!-- Populated by JS -->
+                                </ul>
+                            </div>
+                            <div>
+                                <h3 style="color: var(--accent); font-weight: 500; font-size: 0.95rem; margin-bottom: 0.8rem; display: flex; justify-content: space-between;">
+                                    <span>Wet Proportions</span> 
+                                    <span style="font-size: 0.8rem; color: var(--text-secondary);">(Feeder Settings)</span>
+                                </h3>
+                                <ul id="raw_result_wet" style="list-style: none; padding-left: 0; line-height: 1.8; font-size: 0.9rem; font-weight: 700; color: #10b981;">
+                                    <!-- Populated by JS -->
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Expected Clinker Composition -->
+                        <div style="padding-top: 1.2rem; border-top: 1px solid var(--glass-border); margin-bottom: 1.5rem;">
+                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Expected Clinker Chemistry</h3>
+                            <div style="display: flex; gap: 0.8rem; justify-content: space-between; flex-wrap: wrap; text-align: center; font-size: 0.85rem; background: rgba(255,255,255,0.03); padding: 0.8rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div>SiO₂<br><strong id="cl_SiO2" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>Al₂O₃<br><strong id="cl_Al2O3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>Fe₂O₃<br><strong id="cl_Fe2O3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>CaO<br><strong id="cl_CaO" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>MgO<br><strong id="cl_MgO" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>Na₂O<br><strong id="cl_Na2O" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>K₂O<br><strong id="cl_K2O" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>Cl<br><strong id="cl_Cl" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div>SO₃<br><strong id="cl_SO3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 0.8rem;">LSF<br><strong id="cl_LSF" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                                <div>SM<br><strong id="cl_SM" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                                <div>AM<br><strong id="cl_AM" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                            </div>
+                        </div>
+
+                        <!-- Expected Mineralogical Phases (Bogue) -->
+                        <div style="padding-top: 1.2rem; border-top: 1px solid var(--glass-border); margin-bottom: 1.5rem;">
+                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Resulting Bogue Phases (Clinker Basis)</h3>
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; text-align: center;">
+                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₃S (Alite)</div>
+                                    <div id="cl_C3S" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                </div>
+                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₂S (Belite)</div>
+                                    <div id="cl_C2S" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                </div>
+                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₃A (Aluminate)</div>
+                                    <div id="cl_C3A" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                </div>
+                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₄AF (Ferrite)</div>
+                                    <div id="cl_C4AF" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Diagnostic Alarms -->
+                        <div id="raw_diagnostic_advice" style="margin-top: 1.2rem; padding: 1rem; background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    
+                    <div id="rawmix_prompt_block" style="text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
+                        <span style="font-size: 3rem; display: block; margin-bottom: 1rem;">🧪</span>
+                        Fill in your raw materials and click <strong>"Calculate Feeder Proportions"</strong> to run FLS raw mix proportions.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js?v=5"></script>
+</body>
+</html>
