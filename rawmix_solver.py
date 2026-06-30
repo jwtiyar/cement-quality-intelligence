@@ -109,9 +109,9 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         target_am = float(targets["AM"])
 
         def calc_deltas(comp: dict[str, float]) -> dict[str, float]:
-            c, s, a, f = comp["CaO"], comp["SiO2"], comp["Al2O3"], comp["Fe2O3"]
+            c, s, a, f, so3 = comp["CaO"], comp["SiO2"], comp["Al2O3"], comp["Fe2O3"], comp["SO3"]
             return {
-                "dC": c - 0.01 * target_lsf * (2.8 * s + 1.18 * a + 0.65 * f),
+                "dC": c - 0.7 * so3 - 0.01 * target_lsf * (2.8 * s + 1.18 * a + 0.65 * f),
                 "dS": s - target_sm * (a + f),
                 "dA": a - target_am * f,
             }
