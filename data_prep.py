@@ -51,12 +51,14 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
         np.where(df["Strength_2D"].notna(), 2, np.nan),
     )
 
-    if "28 day" in df.columns and "28 days" in df.columns:
-        df["Strength_28D"] = df["28 day"].combine_first(df["28 days"])
-    elif "28 day" in df.columns:
-        df["Strength_28D"] = df["28 day"]
-    elif "28 days" in df.columns:
-        df["Strength_28D"] = df["28 days"]
+    # Collect all possible 28-day strength columns
+    strength_28_cols = ["Cmp.St. Mpa_28 day", "28 day", "28 days"]
+    available_28_cols = [c for c in strength_28_cols if c in df.columns]
+    
+    if available_28_cols:
+        df["Strength_28D"] = df[available_28_cols[0]]
+        for col in available_28_cols[1:]:
+            df["Strength_28D"] = df["Strength_28D"].combine_first(df[col])
     else:
         df["Strength_28D"] = np.nan
 
