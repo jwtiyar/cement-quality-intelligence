@@ -1185,4 +1185,59 @@ function setupRawMixCalculator() {
             document.getElementById('rawmix_prompt_block').style.display = 'block';
         });
     }
+
+    // Add Excel Paste Support for the table
+    const table = document.querySelector('.rawmix-input-table');
+    if (table) {
+        table.addEventListener('paste', (e) => {
+            const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+            if (!pastedData) return;
+            
+            // Allow default behavior if it's not a multi-cell paste (doesn't contain tabs/newlines)
+            if (pastedData.indexOf('\t') === -1 && pastedData.indexOf('\n') === -1) {
+                return;
+            }
+
+            e.preventDefault();
+
+            const rows = pastedData.split(/\r?\n/).filter(row => row.trim().length > 0);
+            if (rows.length === 0) return;
+
+            const targetInput = e.target;
+            if (targetInput.tagName !== 'INPUT') return;
+
+            const targetTd = targetInput.closest('td');
+            const targetTr = targetInput.closest('tr');
+            if (!targetTd || !targetTr) return;
+
+            const tbody = targetTr.closest('tbody');
+            const trs = Array.from(tbody.querySelectorAll('tr'));
+            const startRowIdx = trs.indexOf(targetTr);
+            
+            const tds = Array.from(targetTr.querySelectorAll('td'));
+            const startColIdx = tds.indexOf(targetTd);
+
+            for (let i = 0; i < rows.length; i++) {
+                const tr = trs[startRowIdx + i];
+                if (!tr) break;
+                
+                const cells = rows[i].split('\t');
+                const rowTds = Array.from(tr.querySelectorAll('td'));
+                
+                for (let j = 0; j < cells.length; j++) {
+                    const td = rowTds[startColIdx + j];
+                    if (!td) break;
+                    
+                    const input = td.querySelector('input');
+                    if (input && !input.disabled && !input.readOnly) {
+                        // Allow floats formatted with commas (EU style)
+                        const val = parseFloat(cells[j].trim().replace(',', '.'));
+                        if (!isNaN(val)) {
+                            input.value = val;
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
