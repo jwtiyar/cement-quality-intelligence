@@ -1072,7 +1072,7 @@ async function calculateRawMixProportions() {
         }
 
         if (resultsBlock) resultsBlock.style.display = 'block';
-        if (proportionsBlock) proportionsBlock.style.display = 'flex';
+        if (proportionsBlock) proportionsBlock.style.display = 'block';
         if (promptBlock) promptBlock.style.display = 'none';
     } catch (err) {
         console.error('Calculation error:', err);
