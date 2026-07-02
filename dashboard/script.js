@@ -1257,6 +1257,16 @@ function setupRawMixCalculator() {
             updateRawMixTotals();
         });
     }
+
+    const recipeBlock = document.getElementById('rawmix_recipe_input_block');
+    if (recipeBlock) {
+        updateRecipeTotals();
+        recipeBlock.addEventListener('input', function(e) {
+            if (e.target.tagName === 'INPUT') {
+                updateRecipeTotals();
+            }
+        });
+    }
 }
 
 // Helper to sum all oxides + LOI for each material
@@ -1284,4 +1294,22 @@ function updateRawMixTotals() {
             }
         }
     });
+}
+
+// Helper to sum recipe inputs
+function updateRecipeTotals() {
+    const ls = parseFloat(document.getElementById('raw_recipe_ls')?.value) || 0;
+    const sh = parseFloat(document.getElementById('raw_recipe_sh')?.value) || 0;
+    const sd = parseFloat(document.getElementById('raw_recipe_sd')?.value) || 0;
+    const py = parseFloat(document.getElementById('raw_recipe_py')?.value) || 0;
+    const sum = ls + sh + sd + py;
+    const totalEl = document.getElementById('raw_recipe_total');
+    if (totalEl) {
+        totalEl.textContent = sum.toFixed(2) + '%';
+        if (Math.abs(sum - 100) > 0.1) {
+            totalEl.style.color = '#ef4444'; // Red
+        } else {
+            totalEl.style.color = '#10b981'; // Green
+        }
+    }
 }
