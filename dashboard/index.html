@@ -298,9 +298,9 @@
                     </div>
                     
                     <!-- Main Layout for Table, Inputs, and Proportions -->
-                    <div style="display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start;">
+                    <div style="display: grid; grid-template-columns: minmax(0, 50%) minmax(0, 25%) minmax(0, 25%); gap: 1.5rem; align-items: flex-start;">
                         <!-- Column 1: Table -->
-                        <div style="flex: 2; min-width: 450px; overflow-x: auto; margin-bottom: 1.5rem;">
+                        <div style="overflow-x: auto; margin-bottom: 1.5rem;">
                         <table class="rawmix-input-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
                             <thead>
                                 <tr style="border-bottom: 1px solid var(--glass-border); text-align: left; color: var(--accent);">
@@ -399,7 +399,7 @@
                         </div> <!-- End Column 1 -->
 
                         <!-- Column 2: Controls & Setpoints -->
-                        <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 1.2rem;">
+                        <div style="display: flex; flex-direction: column; gap: 1.2rem;">
                             <!-- Mode Switcher Tabs -->
                             <div class="rawmix-mode-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.8rem;">
                                 <button type="button" id="raw_mode_solve" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); font-family: 'Outfit', sans-serif; font-weight: 500; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">Solve for Targets</button>
@@ -479,7 +479,7 @@
                         </div> <!-- End Column 2 -->
 
                         <!-- Column 3: Proportions Output (Hidden by default) -->
-                        <div id="rawmix_proportions_block" style="display: none; flex: 1; min-width: 250px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1.2rem; border-radius: 6px;">
+                        <div id="rawmix_proportions_block" style="display: none; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1.2rem; border-radius: 6px;">
                             <h3 style="color: #10b981; font-weight: 500; font-size: 1.1rem; margin: 0 0 1rem 0; border-bottom: 1px solid rgba(16, 185, 129, 0.2); padding-bottom: 0.5rem;">Calculated Proportions</h3>
                             <div style="display: flex; flex-direction: column; gap: 1.5rem;">
                                 <div>
