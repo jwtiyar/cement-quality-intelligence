@@ -1073,7 +1073,18 @@ async function calculateRawMixProportions() {
 
         if (resultsBlock) resultsBlock.style.display = 'block';
         if (proportionsBlock) proportionsBlock.style.display = 'block';
-        if (promptBlock) promptBlock.style.display = 'none';
+        if (promptBlock && data.explanation) {
+            promptBlock.style.display = 'block';
+            promptBlock.style.padding = '1.5rem';
+            promptBlock.style.background = 'rgba(255, 255, 255, 0.03)';
+            promptBlock.style.borderLeft = '4px solid #38bdf8';
+            promptBlock.style.borderRadius = '8px';
+            promptBlock.style.textAlign = 'left';
+            promptBlock.style.marginTop = '2rem';
+            promptBlock.innerHTML = data.explanation;
+        } else if (promptBlock) {
+            promptBlock.style.display = 'none';
+        }
     } catch (err) {
         console.error('Calculation error:', err);
         alert('An error occurred during calculations. Check console for details.');
