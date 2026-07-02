@@ -31,11 +31,17 @@ if %errorlevel% neq 0 (
 
 echo.
 echo ===========================================
-echo 1. Scanning Excel Reports for new data...
+echo 1. Checking Dataset...
 echo ===========================================
-python build_dataset.py
-if %errorlevel% neq 0 (
-    echo [WARNING] Scanning failed. Make sure Excel reports are in the correct directories.
+if not exist ALL_CEMENT_DATA.csv (
+    echo [INFO] Dataset not found. Scanning Excel Reports for the first time...
+    python build_dataset.py
+    if %errorlevel% neq 0 (
+        echo [WARNING] Scanning failed. Make sure Excel reports are in the correct directories.
+    )
+) else (
+    echo [INFO] Dataset ALL_CEMENT_DATA.csv found. Skipping initial scan.
+    echo (Use "Sync Live Excel Data" in the dashboard to update data later)
 )
 
 echo.

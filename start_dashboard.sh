@@ -4,9 +4,15 @@ cd "$(dirname "$0")"
 source venv/bin/activate
 
 echo "==========================================="
-echo "1. Scanning Excel Reports for new data..."
+echo "1. Checking Dataset..."
 echo "==========================================="
-./venv/bin/python build_dataset.py
+if [ ! -f "ALL_CEMENT_DATA.csv" ]; then
+    echo "Dataset not found. Scanning Excel Reports for the first time..."
+    ./venv/bin/python build_dataset.py
+else
+    echo "Dataset ALL_CEMENT_DATA.csv found. Skipping initial scan."
+    echo "(Use 'Sync Live Excel Data' in the dashboard to update data later)"
+fi
 
 echo ""
 echo "==========================================="
