@@ -9,6 +9,38 @@ An intelligent, full-stack dashboard for cement plant quality control. This appl
 - **Automated Anomaly Detection:** Validates thousands of historical daily report records against strict ASTM C150 and EN 197-1 chemical/strength standards. Suspicious values (like typos in Excel sheets) trigger smart alerts in the dashboard UI indicating the date, cement type, and out-of-bounds parameter.
 - **Dynamic Excel Synchronization:** Extracts and cleans data from messy historical daily report Excel files dynamically. A single click in the UI syncs the latest data without needing server restarts.
 
+## Data Directory Structure & Excel Formatting
+
+For the application to find and read your daily report data, your files must be structured in specific year folders located **one level above** this app's directory. 
+
+### 1. Folder Structure
+The app looks at the parent directory for folders named as years (e.g., `2023`, `2024`, `2025`, `2026`). Place your Excel files inside their respective year folders:
+```text
+daily results/                   <-- (Parent Directory)
+│
+├── 2024/
+│   └── Daily Report 2024.xlsx
+├── 2025/
+│   └── Daily Report 2025.xlsx
+├── 2026/
+│   └── Daily Report 2026.xlsx
+│
+└── cement_app/                  <-- (This App's Directory)
+    ├── app.py
+    ├── build_dataset.py
+    └── ...
+```
+
+### 2. Excel Sheet Requirements
+When the extraction script runs, it opens the Excel files and looks for specific sheet names:
+* **Primary:** The script looks for a tab exactly named **"Daily Report"**. 
+* **Fallback:** If "Daily Report" is missing, it will look for tabs explicitly named **"OPC"**, **"SRC"**, or **"SBC"**.
+
+### 3. Missing Data / Empty Folders
+If you run this application and the year folders (`202X`) are missing from the parent directory:
+* The scanner will log **"No records found!"** and skip database creation.
+* The application server will intentionally **refuse to start** and will crash, because it cannot run machine learning models or display dashboards with zero data.
+
 ## Installation & Setup
 
 ### Prerequisites
