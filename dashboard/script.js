@@ -1194,6 +1194,15 @@ function setupRawMixCalculator() {
     // Add Excel Paste Support for the table
     const table = document.querySelector('.rawmix-input-table');
     if (table) {
+        // Call it immediately on load
+        updateRawMixTotals();
+
+        table.addEventListener('input', function(e) {
+            if (e.target.tagName === 'INPUT') {
+                updateRawMixTotals();
+            }
+        });
+
         table.addEventListener('paste', (e) => {
             const pastedData = (e.clipboardData || window.clipboardData).getData('text');
             if (!pastedData) return;
@@ -1243,6 +1252,35 @@ function setupRawMixCalculator() {
                     }
                 }
             }
+            // Update totals after paste is processed
+            updateRawMixTotals();
         });
     }
+}
+
+// Helper to sum all oxides + LOI for each material
+function updateRawMixTotals() {
+    const materials = ['ls', 'sh', 'sd', 'py'];
+    const oxides = ['SiO2', 'Al2O3', 'Fe2O3', 'CaO', 'MgO', 'Na2O', 'K2O', 'SO3', 'LOI'];
+    
+    materials.forEach(mat => {
+        let sum = 0;
+        oxides.forEach(ox => {
+            const el = document.getElementById(`raw_${mat}_${ox}`);
+            if (el) {
+                sum += parseFloat(el.value) || 0;
+            }
+        });
+        
+        const totalEl = document.getElementById(`total_${mat}`);
+        if (totalEl) {
+            totalEl.textContent = sum.toFixed(2);
+            // Highlight if not close to 100
+            if (Math.abs(sum - 100) > 2) {
+                totalEl.style.color = '#ef4444'; // Red
+            } else {
+                totalEl.style.color = '#10b981'; // Green
+            }
+        }
+    });
 }
