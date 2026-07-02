@@ -515,45 +515,47 @@
                     <p class="section-desc" style="margin-bottom: 1.2rem;">Dry/wet proportion results and expected clinker quality indicators.</p>
                     
                     <div id="rawmix_results_block" style="display: none;">
-                        <!-- Expected Clinker Composition (Proportions moved above) -->
-
-                        <!-- Expected Clinker Composition -->
-                        <div style="margin-bottom: 1.5rem;">
-                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Expected Clinker Chemistry</h3>
-                            <div style="display: flex; gap: 0.8rem; justify-content: space-between; flex-wrap: wrap; text-align: center; font-size: 0.85rem; background: rgba(255,255,255,0.03); padding: 0.8rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-                                <div>SiO₂<br><strong id="cl_SiO2" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>Al₂O₃<br><strong id="cl_Al2O3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>Fe₂O₃<br><strong id="cl_Fe2O3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>CaO<br><strong id="cl_CaO" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>MgO<br><strong id="cl_MgO" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>Na₂O<br><strong id="cl_Na2O" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>K₂O<br><strong id="cl_K2O" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div>SO₃<br><strong id="cl_SO3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
-                                <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 0.8rem;">LSF<br><strong id="cl_LSF" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
-                                <div>SM<br><strong id="cl_SM" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
-                                <div>AM<br><strong id="cl_AM" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                        <div style="display: grid; grid-template-columns: 13fr 10fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                            <!-- Expected Clinker Composition -->
+                            <div>
+                                <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Expected Clinker Chemistry</h3>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; text-align: center; font-size: 0.85rem; background: rgba(255,255,255,0.03); padding: 0.8rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div>SiO₂<br><strong id="cl_SiO2" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>Al₂O₃<br><strong id="cl_Al2O3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>Fe₂O₃<br><strong id="cl_Fe2O3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>CaO<br><strong id="cl_CaO" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>MgO<br><strong id="cl_MgO" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>Na₂O<br><strong id="cl_Na2O" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>K₂O<br><strong id="cl_K2O" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div>SO₃<br><strong id="cl_SO3" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
+                                    <div style="grid-column: span 4; display: flex; justify-content: space-around; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.8rem; margin-top: 0.2rem;">
+                                        <div>LSF: <strong id="cl_LSF" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                                        <div>SM: <strong id="cl_SM" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                                        <div>AM: <strong id="cl_AM" style="font-size: 1.1rem; color: var(--accent);">--</strong></div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
 
-                        <!-- Expected Mineralogical Phases (Bogue) -->
-                        <div style="padding-top: 1.2rem; border-top: 1px solid var(--glass-border); margin-bottom: 1.5rem;">
-                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Resulting Bogue Phases (Clinker Basis)</h3>
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; text-align: center;">
-                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₃S (Alite)</div>
-                                    <div id="cl_C3S" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
-                                </div>
-                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₂S (Belite)</div>
-                                    <div id="cl_C2S" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
-                                </div>
-                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₃A (Aluminate)</div>
-                                    <div id="cl_C3A" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
-                                </div>
-                                <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05);">
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">C₄AF (Ferrite)</div>
-                                    <div id="cl_C4AF" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                            <!-- Expected Mineralogical Phases (Bogue) -->
+                            <div>
+                                <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Resulting Bogue Phases (Clinker)</h3>
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; text-align: center; height: calc(100% - 2.5rem);">
+                                    <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05); display: flex; flex-direction: column; justify-content: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">C₃S (Alite)</div>
+                                        <div id="cl_C3S" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                    </div>
+                                    <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05); display: flex; flex-direction: column; justify-content: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">C₂S (Belite)</div>
+                                        <div id="cl_C2S" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                    </div>
+                                    <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05); display: flex; flex-direction: column; justify-content: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">C₃A (Aluminate)</div>
+                                        <div id="cl_C3A" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                    </div>
+                                    <div class="glass" style="padding: 0.5rem; border-radius: 8px; background: rgba(56, 189, 248, 0.05); display: flex; flex-direction: column; justify-content: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">C₄AF (Ferrite)</div>
+                                        <div id="cl_C4AF" style="font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem;">--</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
