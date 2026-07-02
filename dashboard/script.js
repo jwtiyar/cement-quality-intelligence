@@ -88,6 +88,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         document.getElementById('yearsCoverage').innerText = dashboardData.summary.yearsCoverage;
 
+        // Populate Anomaly Banner
+        const anomalyBanner = document.getElementById('anomaly_banner');
+        if (dashboardData.anomalies && dashboardData.anomalies.length > 0) {
+            const textDiv = document.getElementById('anomaly_text');
+            anomalyBanner.style.display = 'block';
+            
+            let msg = `The system automatically scanned all Excel sheets during startup and found <strong>${dashboardData.anomalies.length}</strong> suspiciously large or small numbers (likely typos):<br><br><ul style="margin: 0; padding-left: 1.5rem;">`;
+            const samples = dashboardData.anomalies.slice(0, 5);
+            samples.forEach(a => {
+                msg += `<li style="margin-bottom: 0.3rem;"><strong>${a.Date} (${a.Type}):</strong> ${a.Parameter} is logged as <strong>${a.Value}</strong> (Normal range is ${a.Expected})</li>`;
+            });
+            msg += `</ul>`;
+            if (dashboardData.anomalies.length > 5) {
+                msg += `<br><em>...and ${dashboardData.anomalies.length - 5} more.</em>`;
+            }
+            msg += `<br>Please check these dates in your Excel sheets, fix the typos, and click <strong>"Sync Live Excel Data"</strong> to clear this warning.`;
+            textDiv.innerHTML = msg;
+        } else if (anomalyBanner) {
+            anomalyBanner.style.display = 'none';
+        }
+
         // 2. Setup Chart Parameter Selection
         const paramSelector = document.getElementById('paramSelector');
         paramSelector.addEventListener('change', (e) => {

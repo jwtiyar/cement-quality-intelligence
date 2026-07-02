@@ -95,6 +95,30 @@ def reload_from_csv(csv_path: str | None = None) -> None:
 
     strength_28_count = int(df["Strength_28D"].notna().sum())
 
+    anomalies = []
+    bounds = {
+        "SiO2": (15, 30),
+        "Al2O3": (1, 10),
+        "Fe2O3": (0, 10),
+        "CaO": (50, 75),
+        "Strength_28D": (5, 90),
+        "Fineness": (1000, 7000),
+        "C3S": (10, 90)
+    }
+    for param, (low, high) in bounds.items():
+        if param in df.columns:
+            s_numeric = pd.to_numeric(df[param], errors='coerce')
+            mask = s_numeric.notna() & ((s_numeric < low) | (s_numeric > high))
+            outliers = df[mask]
+            for _, row in outliers.iterrows():
+                anomalies.append({
+                    "Date": str(row["Date"]).split(" ")[0],
+                    "Type": str(row.get("Cement_Type", "Unknown")),
+                    "Parameter": param,
+                    "Value": round(float(row[param]), 2),
+                    "Expected": f"{low} - {high}"
+                })
+
     data_cache = {
         "summary": {
             "totalRecords": len(df),
@@ -125,6 +149,7 @@ def reload_from_csv(csv_path: str | None = None) -> None:
         "trends": {"labels": [str(y) for y in years], "data": trends},
         "correlation": {"columns": corr_cols, "matrix": corr_matrix},
         "lowStrengthDays": low_strength_list,
+        "anomalies": anomalies,
         "distribution": type_counts,
         "ml": ml_data,
         "mlFeatures": ML_FEATURES,
