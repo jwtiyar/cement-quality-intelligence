@@ -125,10 +125,10 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         ]
         B = [70.0 * cl_so3_fuel, 0.0, 0.0, 100.0]
         X = _solve4x4(M, B)
-        if X is None or any(v < 0 for v in X):
+        if X is None:
             raise ValueError(
-                "Solver could not find a positive-proportion solution. "
-                "Review material compositions and target moduli."
+                "Solver encountered a mathematical error (singular matrix). "
+                "Review material compositions."
             )
         x_cl = X + [x5]
     else:
@@ -187,6 +187,38 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     labels = ["Limestone", "Clay", "Sand", corrector_label]
     diagnostics = rawmix_diagnostics(cement_type, cl_lsf, cl_sm, cl_am, c3a, lc)
 
+    # Generate Explanation
+    explanation_parts = []
+    has_negatives = any(v < 0 for v in x_dry)
+
+    if mode == "solve":
+        if has_negatives:
+            neg_mats = [labels[i] for i in range(4) if x_dry[i] < 0]
+            explanation_parts.append(
+                f"🚨 **Impossible Target:** The solver reached the target moduli mathematically, but it required **NEGATIVE** proportions for: {', '.join(neg_mats)}."
+            )
+            if "Sand" in neg_mats:
+                explanation_parts.append(
+                    f"<br><strong>Why?</strong> Your Iron Ore (or Clay) likely contains too much Silica (SiO₂) to reach your low AM target without overshooting your SM target. "
+                    f"To fix this, you must either increase your target SM, increase your target AM, or use a purer Iron Ore (with lower SiO₂)."
+                )
+            elif "Pyrite" in neg_mats or "Clay" in neg_mats:
+                explanation_parts.append(
+                    f"<br><strong>Why?</strong> Your other materials already provide more of certain oxides (like Fe₂O₃ or Al₂O₃) than needed. Try adjusting your target AM or SM."
+                )
+            else:
+                explanation_parts.append("<br><strong>Why?</strong> The requested moduli contradict the natural chemistry of your raw materials.")
+        else:
+            explanation_parts.append("✅ **Mathematically Valid Mix:**")
+            explanation_parts.append(f"<ul><li><strong>Limestone</strong> provides the majority of the CaO to hit LSF {target_lsf}.</li>")
+            explanation_parts.append(f"<li><strong>Clay</strong> acts as the primary source of Alumina and Silica.</li>")
+            explanation_parts.append(f"<li><strong>Sand</strong> balances the Silica Modulus (SM) to {target_sm}.</li>")
+            explanation_parts.append(f"<li><strong>Iron Ore/Pyrite</strong> adjusts the Alumina Modulus (AM) to {target_am}.</li></ul>")
+    else:
+        explanation_parts.append("ℹ️ **Recipe Calculation:** Proportions were manually provided.")
+        if has_negatives:
+            explanation_parts.append("<br><strong>Warning:</strong> You entered negative proportions.")
+
     return {
         "dry_proportions": {
             labels[i]: round(x_dry_norm[i], 2) for i in range(4)
@@ -216,4 +248,5 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         "liquid_content": round(lc, 1),
         "diagnostics": diagnostics,
         "corrector_label": corrector_label,
+        "explanation": "".join(explanation_parts),
     }
