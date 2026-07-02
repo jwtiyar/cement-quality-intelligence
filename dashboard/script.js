@@ -380,8 +380,11 @@ function setupMLPredictor() {
     const actualResultBox = document.getElementById('actualResultBox');
     const actualStrengthVal = document.getElementById('actualStrengthVal');
     
+    let lastLoadedRecordDate = null;
+    
     // Function to clear optimizer inputs and reset outputs
     function clearOptimizerInputs() {
+        lastLoadedRecordDate = null;
         document.getElementById('opt_CaO').value = '';
         document.getElementById('opt_SiO2').value = '';
         document.getElementById('opt_Al2O3').value = '';
@@ -461,6 +464,7 @@ function setupMLPredictor() {
             const resData = await res.json();
 
             if (resData.found) {
+                lastLoadedRecordDate = dateVal;
                 // Populate inputs with record values
                 updateModelUI(cType, resData.record);
                 
@@ -565,6 +569,7 @@ function setupMLPredictor() {
             document.getElementById('opt_res_SM').innerText = '--';
             document.getElementById('opt_res_AM').innerText = '--';
             document.getElementById('opt_res_strength').innerText = '--';
+            document.getElementById('expectedDateBox').style.display = 'none';
             const adviceEl = document.getElementById('opt_advice');
             if (adviceEl) {
                 adviceEl.innerHTML = 'Load a historical record above to start simulating and receiving AI advice...';
@@ -618,9 +623,24 @@ function setupMLPredictor() {
                 if (result.prediction !== undefined) {
                     strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
                     advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                    
+                    const dateBox = document.getElementById('expectedDateBox');
+                    const dateVal = document.getElementById('expectedBreakDate');
+                    let baseDateObj = new Date();
+                    if (lastLoadedRecordDate) {
+                        baseDateObj = new Date(lastLoadedRecordDate);
+                    } else if (Early_Strength_Days) {
+                        baseDateObj.setDate(baseDateObj.getDate() - Early_Strength_Days);
+                    }
+                    baseDateObj.setDate(baseDateObj.getDate() + 28);
+                    
+                    const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+                    dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
+                    dateBox.style.display = 'flex';
                 }
             } else {
                 strengthHtml = `<span style="font-size:0.95rem;color:#94a3b8;">ML not used — ${modelMeta.confidenceLabel}</span>`;
+                document.getElementById('expectedDateBox').style.display = 'none';
             }
 
             document.getElementById('opt_res_strength').innerHTML = strengthHtml;
