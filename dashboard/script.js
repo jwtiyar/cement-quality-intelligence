@@ -1080,8 +1080,8 @@ async function calculateRawMixProportions() {
     }
 }
 const rawMixCorrections = {
-    OPC: { SiO2: 34.50, Al2O3: 12.10, Fe2O3: 1.20, CaO: 41.30, MgO: 5.50, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.80, H2O: 6.5 },
-    SBC: { SiO2: 34.50, Al2O3: 12.10, Fe2O3: 1.20, CaO: 41.30, MgO: 5.50, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.80, H2O: 6.5 },
+    OPC: { SiO2: 23.60, Al2O3: 8.25, Fe2O3: 27.69, CaO: 32.15, MgO: 5.93, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.90, H2O: 6.5 },
+    SBC: { SiO2: 23.60, Al2O3: 8.25, Fe2O3: 27.69, CaO: 32.15, MgO: 5.93, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.90, H2O: 6.5 },
     SRC: { SiO2: 49.00, Al2O3: 0.69, Fe2O3: 37.18, CaO: 1.00, MgO: 0.90, Na2O: 0.29, K2O: 0.81, SO3: 1.50, LOI: 8.55, H2O: 7.8 }
 };
 let rawCementType = 'OPC';
