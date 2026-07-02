@@ -929,6 +929,7 @@ window.switchTab = function(tabName) {
 // FLS proportioning — server-side via /api/rawmix/calculate
 async function calculateRawMixProportions() {
     const resultsBlock = document.getElementById('rawmix_results_block');
+    const proportionsBlock = document.getElementById('rawmix_proportions_block');
     const promptBlock = document.getElementById('rawmix_prompt_block');
 
     const materials = {
@@ -1071,6 +1072,7 @@ async function calculateRawMixProportions() {
         }
 
         if (resultsBlock) resultsBlock.style.display = 'block';
+        if (proportionsBlock) proportionsBlock.style.display = 'flex';
         if (promptBlock) promptBlock.style.display = 'none';
     } catch (err) {
         console.error('Calculation error:', err);
@@ -1136,6 +1138,7 @@ function setupRawMixCalculator() {
 
             // Clear output
             document.getElementById('rawmix_results_block').style.display = 'none';
+            document.getElementById('rawmix_proportions_block').style.display = 'none';
             document.getElementById('rawmix_prompt_block').style.display = 'block';
         });
     }
@@ -1160,6 +1163,7 @@ function setupRawMixCalculator() {
             
             // Clear outputs
             document.getElementById('rawmix_results_block').style.display = 'none';
+            document.getElementById('rawmix_proportions_block').style.display = 'none';
             document.getElementById('rawmix_prompt_block').style.display = 'block';
         });
 
@@ -1182,6 +1186,7 @@ function setupRawMixCalculator() {
             
             // Clear outputs
             document.getElementById('rawmix_results_block').style.display = 'none';
+            document.getElementById('rawmix_proportions_block').style.display = 'none';
             document.getElementById('rawmix_prompt_block').style.display = 'block';
         });
     }
