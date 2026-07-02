@@ -1085,6 +1085,7 @@ const rawMixCorrections = {
     SRC: { SiO2: 49.00, Al2O3: 0.69, Fe2O3: 37.18, CaO: 1.00, MgO: 0.90, Na2O: 0.29, K2O: 0.81, SO3: 1.50, LOI: 8.55, H2O: 7.8 }
 };
 let rawCementType = 'OPC';
+let rawMixMode = 'solve';
 
 // Setup and event wiring for Raw Mix tab
 function setupRawMixCalculator() {
