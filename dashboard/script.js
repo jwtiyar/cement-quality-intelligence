@@ -625,10 +625,17 @@ function setupMLPredictor() {
                     advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
                     
                     const dateBox = document.getElementById('expectedDateBox');
+                    const dateLabel = dateBox.querySelector('.label');
                     const dateVal = document.getElementById('expectedBreakDate');
+                    
                     let baseDateObj = new Date();
                     if (lastLoadedRecordDate) {
-                        baseDateObj = new Date(lastLoadedRecordDate);
+                        const parts = lastLoadedRecordDate.split('-');
+                        if (parts.length === 3) {
+                            baseDateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                        } else {
+                            baseDateObj = new Date(lastLoadedRecordDate);
+                        }
                     } else if (Early_Strength_Days) {
                         baseDateObj.setDate(baseDateObj.getDate() - Early_Strength_Days);
                     }
@@ -636,6 +643,20 @@ function setupMLPredictor() {
                     
                     const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
                     dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
+                    
+                    // Check if actual result is currently displayed
+                    const hasActual = actualResultBox && actualResultBox.style.display !== 'none';
+                    if (hasActual) {
+                        dateLabel.innerText = 'Actual Break Date:';
+                        dateBox.style.background = 'rgba(56, 189, 248, 0.1)';
+                        dateBox.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+                        dateVal.style.color = 'var(--accent)';
+                    } else {
+                        dateLabel.innerText = 'Expected 28-Day Break Date:';
+                        dateBox.style.background = 'rgba(16, 185, 129, 0.1)';
+                        dateBox.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+                        dateVal.style.color = '#10b981';
+                    }
                     dateBox.style.display = 'flex';
                 }
             } else {
