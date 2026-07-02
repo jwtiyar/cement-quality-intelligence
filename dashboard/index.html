@@ -297,7 +297,10 @@
                         </select>
                     </div>
                     
-                    <div style="overflow-x: auto; margin-bottom: 1.5rem;">
+                    <!-- Main Layout for Table, Inputs, and Proportions -->
+                    <div style="display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start;">
+                        <!-- Column 1: Table -->
+                        <div style="flex: 2; min-width: 450px; overflow-x: auto; margin-bottom: 1.5rem;">
                         <table class="rawmix-input-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
                             <thead>
                                 <tr style="border-bottom: 1px solid var(--glass-border); text-align: left; color: var(--accent);">
@@ -393,82 +396,107 @@
                         </table>
                     </div>
 
-                    <!-- Mode Switcher Tabs -->
-                    <div class="rawmix-mode-tabs" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.8rem;">
-                        <button type="button" id="raw_mode_solve" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.9rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); font-family: 'Outfit', sans-serif; font-weight: 500; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">Mode: Solve for Targets</button>
-                        <button type="button" id="raw_mode_calc" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.9rem; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); border-radius: 6px; font-family: 'Outfit', sans-serif; font-weight: 500; color: var(--text-secondary); cursor: pointer;">Mode: Calculate from Recipe</button>
-                    </div>
+                        </div> <!-- End Column 1 -->
 
-                    <!-- Target Setpoints / Recipe Inputs and Kiln Fuel Settings in a clean, vertical stack -->
-                    <div style="display: flex; flex-direction: column; gap: 1.2rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border);">
-                        
-                        <!-- Target Moduli Column (Solve Mode) -->
-                        <div id="rawmix_target_moduli_block" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
-                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0;">Target Clinker Moduli Setpoints</h3>
-                            <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_target_LSF" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target LSF (%)</label>
-                                    <input type="number" id="raw_target_LSF" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="95" step="0.5">
+                        <!-- Column 2: Controls & Setpoints -->
+                        <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 1.2rem;">
+                            <!-- Mode Switcher Tabs -->
+                            <div class="rawmix-mode-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.8rem;">
+                                <button type="button" id="raw_mode_solve" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); font-family: 'Outfit', sans-serif; font-weight: 500; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">Solve for Targets</button>
+                                <button type="button" id="raw_mode_calc" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); border-radius: 6px; font-family: 'Outfit', sans-serif; font-weight: 500; color: var(--text-secondary); cursor: pointer;">Calculate from Recipe</button>
+                            </div>
+
+                            <!-- Target Setpoints / Recipe Inputs and Kiln Fuel Settings -->
+                            <div style="display: flex; flex-direction: column; gap: 1rem; border-top: 1px solid var(--glass-border); padding-top: 1rem;">
+                                
+                                <!-- Target Moduli Column (Solve Mode) -->
+                                <div id="rawmix_target_moduli_block" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
+                                    <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0;">Target Clinker Moduli</h3>
+                                    <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_target_LSF" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">LSF (%)</label>
+                                            <input type="number" id="raw_target_LSF" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="95" step="0.5">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_target_SM" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">SM</label>
+                                            <input type="number" id="raw_target_SM" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="2.4" step="0.05">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_target_AM" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">AM</label>
+                                            <input type="number" id="raw_target_AM" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="1.8" step="0.05">
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_target_SM" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target SM</label>
-                                    <input type="number" id="raw_target_SM" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="2.4" step="0.05">
+
+                                <!-- Recipe Proportions Column (Calculate Mode, Hidden initially) -->
+                                <div id="rawmix_recipe_input_block" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
+                                    <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0;">Dry Recipe Proportions (%)</h3>
+                                    <div class="input-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; align-items: center;">
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_recipe_ls" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Limestone</label>
+                                            <input type="number" id="raw_recipe_ls" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="72.33" step="0.01">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_recipe_sh" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Clay</label>
+                                            <input type="number" id="raw_recipe_sh" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="26.92" step="0.01">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_recipe_sd" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Sand</label>
+                                            <input type="number" id="raw_recipe_sd" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="0.54" step="0.01">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_recipe_py" id="raw_recipe_py_label" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Slag</label>
+                                            <input type="number" id="raw_recipe_py" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="0.21" step="0.01">
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_target_AM" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target AM</label>
-                                    <input type="number" id="raw_target_AM" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="1.8" step="0.05">
+                                
+                                <!-- Kiln Fuel Settings -->
+                                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
+                                    <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span>🔥</span> HFO Combustion Settings
+                                    </h3>
+                                    <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_hfo_heat" style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Heat Cons. (kcal/kg)</label>
+                                            <input type="number" id="raw_hfo_heat" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="730" step="5">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_hfo_cal" style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Calorific (kcal/kg)</label>
+                                            <input type="number" id="raw_hfo_cal" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="9800" step="50">
+                                        </div>
+                                        <div class="form-group" style="text-align: center;">
+                                            <label for="raw_hfo_sulfur" style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Sulfur (%)</label>
+                                            <input type="number" id="raw_hfo_sulfur" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="2.50" step="0.05">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Recipe Proportions Column (Calculate Mode, Hidden initially) -->
-                        <div id="rawmix_recipe_input_block" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
-                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0;">Dry Recipe Proportions (%)</h3>
-                            <div class="input-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; align-items: center;">
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_recipe_ls" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Limestone %</label>
-                                    <input type="number" id="raw_recipe_ls" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="72.33" step="0.01">
+                            <div style="text-align: right;">
+                                <button type="button" id="btnCalculateRawMix" class="btn-predict" style="width: 100%; padding: 0.6rem; font-size: 1rem; margin-top: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">Calculate Proportions</button>
+                            </div>
+                        </div> <!-- End Column 2 -->
+
+                        <!-- Column 3: Proportions Output (Hidden by default) -->
+                        <div id="rawmix_proportions_block" style="display: none; flex: 1; min-width: 250px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1.2rem; border-radius: 6px;">
+                            <h3 style="color: #10b981; font-weight: 500; font-size: 1.1rem; margin: 0 0 1rem 0; border-bottom: 1px solid rgba(16, 185, 129, 0.2); padding-bottom: 0.5rem;">Calculated Proportions</h3>
+                            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                                <div>
+                                    <h4 style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Wet Proportions (Feeder Settings)</h4>
+                                    <ul id="raw_result_wet" style="list-style: none; padding-left: 0; line-height: 1.8; font-size: 0.95rem; font-weight: 700; color: #10b981; margin: 0;">
+                                        <!-- Populated by JS -->
+                                    </ul>
                                 </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_recipe_sh" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Clay %</label>
-                                    <input type="number" id="raw_recipe_sh" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="26.92" step="0.01">
-                                </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_recipe_sd" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Sand %</label>
-                                    <input type="number" id="raw_recipe_sd" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="0.54" step="0.01">
-                                </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_recipe_py" id="raw_recipe_py_label" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Slag %</label>
-                                    <input type="number" id="raw_recipe_py" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="0.21" step="0.01">
+                                <div>
+                                    <h4 style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Dry Proportions (Raw Mill Target)</h4>
+                                    <ul id="raw_result_dry" style="list-style: none; padding-left: 0; line-height: 1.8; font-size: 0.9rem; margin: 0;">
+                                        <!-- Populated by JS -->
+                                    </ul>
                                 </div>
                             </div>
-                        </div>
-                        
-                        <!-- Kiln Fuel Settings -->
-                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
-                            <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0; display: flex; align-items: center; gap: 0.5rem;">
-                                <span>🔥</span> HFO Combustion Settings
-                            </h3>
-                            <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_hfo_heat" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Heat Cons. (kcal/kg)</label>
-                                    <input type="number" id="raw_hfo_heat" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="730" step="5">
-                                </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_hfo_cal" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">HFO Calorific (kcal/kg)</label>
-                                    <input type="number" id="raw_hfo_cal" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="9800" step="50">
-                                </div>
-                                <div class="form-group" style="text-align: center;">
-                                    <label for="raw_hfo_sulfur" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">HFO Sulfur (%)</label>
-                                    <input type="number" id="raw_hfo_sulfur" class="glass-select" style="padding: 0.35rem; text-align: center; width: 100%;" value="2.50" step="0.05">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="margin-top: 1.5rem; text-align: right;">
-                        <button type="button" id="btnCalculateRawMix" class="btn-predict" style="width: auto; padding: 0.6rem 2rem; font-size: 1rem; margin-top: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">Calculate Feeder Proportions</button>
-                    </div>
+                        </div> <!-- End Column 3 -->
+                    </div> <!-- End Main Flex Layout -->
                 </div>
                 <!-- Results Card -->
                 <div class="predictor-container glass span-full" style="padding: 1.8rem;">
@@ -476,30 +504,10 @@
                     <p class="section-desc" style="margin-bottom: 1.2rem;">Dry/wet proportion results and expected clinker quality indicators.</p>
                     
                     <div id="rawmix_results_block" style="display: none;">
-                        <!-- Proportions dry/wet -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-                            <div>
-                                <h3 style="color: var(--accent); font-weight: 500; font-size: 0.95rem; margin-bottom: 0.8rem; display: flex; justify-content: space-between;">
-                                    <span>Dry Proportions</span> 
-                                    <span style="font-size: 0.8rem; color: var(--text-secondary);">(Raw Mill Target)</span>
-                                </h3>
-                                <ul id="raw_result_dry" style="list-style: none; padding-left: 0; line-height: 1.8; font-size: 0.9rem;">
-                                    <!-- Populated by JS -->
-                                </ul>
-                            </div>
-                            <div>
-                                <h3 style="color: var(--accent); font-weight: 500; font-size: 0.95rem; margin-bottom: 0.8rem; display: flex; justify-content: space-between;">
-                                    <span>Wet Proportions</span> 
-                                    <span style="font-size: 0.8rem; color: var(--text-secondary);">(Feeder Settings)</span>
-                                </h3>
-                                <ul id="raw_result_wet" style="list-style: none; padding-left: 0; line-height: 1.8; font-size: 0.9rem; font-weight: 700; color: #10b981;">
-                                    <!-- Populated by JS -->
-                                </ul>
-                            </div>
-                        </div>
+                        <!-- Expected Clinker Composition (Proportions moved above) -->
 
                         <!-- Expected Clinker Composition -->
-                        <div style="padding-top: 1.2rem; border-top: 1px solid var(--glass-border); margin-bottom: 1.5rem;">
+                        <div style="margin-bottom: 1.5rem;">
                             <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Expected Clinker Chemistry</h3>
                             <div style="display: flex; gap: 0.8rem; justify-content: space-between; flex-wrap: wrap; text-align: center; font-size: 0.85rem; background: rgba(255,255,255,0.03); padding: 0.8rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
                                 <div>SiO₂<br><strong id="cl_SiO2" style="font-size: 1.1rem; color: #fff;">--</strong>%</div>
