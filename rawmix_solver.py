@@ -191,6 +191,13 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     explanation_parts = []
     has_negatives = any(v < 0 for v in x_dry)
 
+    if has_negatives:
+        diagnostics.insert(0, {
+            "severity": "error", 
+            "message": "Calculated raw mix requires physically impossible negative proportions."
+        })
+
+
     if mode == "solve":
         if has_negatives:
             neg_mats = [labels[i] for i in range(4) if x_dry[i] < 0]
