@@ -97,13 +97,16 @@ def reload_from_csv(csv_path: str | None = None) -> None:
 
     anomalies = []
     bounds = {
-        "SiO2": (15, 30),
-        "Al2O3": (1, 10),
-        "Fe2O3": (0, 10),
-        "CaO": (50, 75),
-        "Strength_28D": (5, 90),
-        "Fineness": (1000, 7000),
-        "C3S": (10, 90)
+        "SiO2": (17, 26),        # ASTM/EN typical: 19-23%
+        "Al2O3": (2, 8),         # ASTM/EN typical: 3-6%
+        "Fe2O3": (1, 6),         # ASTM/EN typical: 1.5-4.5%
+        "CaO": (55, 70),         # ASTM/EN typical: 61-67%
+        "MgO": (0, 6),           # ASTM C150 max is 6.0%
+        "SO3": (0.5, 4.5),       # EN 197 max is 3.5%-4.0%, ASTM C150 max 3.0-4.5%
+        "Strength_28D": (20, 80),# EN 197 classes: 32.5, 42.5, 52.5 MPa
+        "Fineness": (2000, 6000),# Typical Blaine 2500-5000 cm2/g
+        "C3S": (30, 80),         # Bogue typical
+        "C3A": (0, 15)           # ASTM Type V max 5%, Type I up to 15%
     }
     for param, (low, high) in bounds.items():
         if param in df.columns:
