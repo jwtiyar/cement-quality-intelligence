@@ -260,20 +260,14 @@ async def chat(request: Request):
         retrieved_contexts = []
         sources = []
 
-        if index and index.get("chunks") and index.get("embeddings") is not None:
-            # 1. Embed query
-            res = genai.embed_content(
-                model="models/embedding-001",
-                content=message,
-                task_type="retrieval_query"
-            )
-            query_emb = np.array(res['embedding'], dtype=np.float32)
+        if index and index.get("chunks") and index.get("vectorizer") is not None and index.get("tfidf_matrix") is not None:
+            # 1. Transform query
+            vectorizer = index["vectorizer"]
+            tfidf_matrix = index["tfidf_matrix"]
+            query_vec = vectorizer.transform([message])
 
             # 2. Compute similarity
-            embs = index["embeddings"]
-            norm_embs = embs / np.linalg.norm(embs, axis=1, keepdims=True)
-            norm_query = query_emb / np.linalg.norm(query_emb)
-            similarities = np.dot(norm_embs, norm_query)
+            similarities = np.dot(tfidf_matrix, query_vec.T).toarray().flatten()
 
             # Get top 5
             top_k = min(5, len(similarities))
@@ -281,7 +275,7 @@ async def chat(request: Request):
 
             for idx in top_indices:
                 score = float(similarities[idx])
-                if score > 0.3: # Minimum similarity threshold
+                if score > 0.05: # Minimum similarity threshold
                     chunk = index["chunks"][idx]
                     retrieved_contexts.append(chunk["text"])
                     sources.append({
@@ -291,7 +285,7 @@ async def chat(request: Request):
                     })
 
         # 3. Create model & chat
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("models/gemini-3-flash-preview")
         
         # Format the system instruction
         context_str = "\n\n".join([f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}" for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))])
