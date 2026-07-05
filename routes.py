@@ -207,3 +207,137 @@ def export_csv():
         filename="ALL_CEMENT_DATA.csv",
         headers={"Content-Disposition": "attachment; filename=ALL_CEMENT_DATA.csv"},
     )
+
+
+# Helper to load .env in routes.py
+def load_env():
+    env_paths = [".env", "../.env"]
+    for path in env_paths:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and "=" in line and not line.startswith("#"):
+                        key, val = line.split("=", 1)
+                        val = val.strip().strip("'").strip('"')
+                        os.environ[key.strip()] = val
+
+load_env()
+
+rag_index = None
+
+def get_rag_index():
+    global rag_index
+    if rag_index is None:
+        index_path = "knowledge_base/rag_index.pkl"
+        if os.path.exists(index_path):
+            try:
+                import pickle
+                with open(index_path, 'rb') as f:
+                    rag_index = pickle.load(f)
+            except Exception as e:
+                print(f"Error loading RAG index: {e}")
+    return rag_index
+
+@router.post("/api/chat")
+async def chat(request: Request):
+    try:
+        body = await request.json()
+        message = body.get("message", "").strip()
+        history = body.get("history", [])
+
+        if not message:
+            raise HTTPException(status_code=400, detail="Empty message")
+
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
+
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+
+        index = get_rag_index()
+        retrieved_contexts = []
+        sources = []
+
+        if index and index.get("chunks") and index.get("embeddings") is not None:
+            # 1. Embed query
+            res = genai.embed_content(
+                model="models/text-embedding-004",
+                content=message,
+                task_type="retrieval_query"
+            )
+            query_emb = np.array(res['embedding'], dtype=np.float32)
+
+            # 2. Compute similarity
+            embs = index["embeddings"]
+            norm_embs = embs / np.linalg.norm(embs, axis=1, keepdims=True)
+            norm_query = query_emb / np.linalg.norm(query_emb)
+            similarities = np.dot(norm_embs, norm_query)
+
+            # Get top 5
+            top_k = min(5, len(similarities))
+            top_indices = np.argsort(similarities)[::-1][:top_k]
+
+            for idx in top_indices:
+                score = float(similarities[idx])
+                if score > 0.3: # Minimum similarity threshold
+                    chunk = index["chunks"][idx]
+                    retrieved_contexts.append(chunk["text"])
+                    sources.append({
+                        "file": chunk["source"],
+                        "page": chunk["page"],
+                        "score": round(score, 3)
+                    })
+
+        # 3. Create model & chat
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        # Format the system instruction
+        context_str = "\n\n".join([f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}" for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))])
+        
+        system_instruction = (
+            "You are an expert Cement Quality & Plant Operations Assistant. Your purpose is to help the lab technician troubleshoot cement strength anomalies, interpret raw mix design concepts, and find relevant standards.\n\n"
+            "Using ONLY the provided reference documents below, answer the user's question. Be precise, concise, and cite which document and page you found the information in.\n"
+            "If the answer cannot be found in the references, politely say that you do not have that information in the manuals/standards. Do NOT make up answers.\n\n"
+            f"--- REFERENCE DOCUMENTS ---\n{context_str}\n---------------------------"
+        )
+        
+        formatted_history = []
+        for turn in history:
+            role = "user" if turn.get("role") == "user" else "model"
+            formatted_history.append({"role": role, "parts": [turn.get("content", "")]})
+            
+        chat_session = model.start_chat(history=formatted_history)
+        
+        prompt = f"{system_instruction}\n\nUser Question: {message}"
+        response = chat_session.send_message(prompt)
+        
+        # Deduplicate sources
+        unique_sources = []
+        seen = set()
+        for src in sources:
+            key = (src["file"], src["page"])
+            if key not in seen:
+                seen.add(key)
+                unique_sources.append(src)
+                
+        return {
+            "response": response.text,
+            "sources": unique_sources
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/rag/rebuild")
+def rebuild_rag_index():
+    try:
+        global rag_index
+        # Force reload from disk next time get_rag_index() is called
+        rag_index = None
+        
+        from rag_index import rebuild_index
+        rebuild_index()
+        return {"status": "success", "message": "RAG index rebuilt successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

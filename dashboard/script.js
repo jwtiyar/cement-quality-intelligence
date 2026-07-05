@@ -953,10 +953,12 @@ window.switchTab = function(tabName) {
     const tabAnalytics = document.getElementById('tabAnalytics');
     const tabAI = document.getElementById('tabAI');
     const tabRawMix = document.getElementById('tabRawMix');
+    const tabChat = document.getElementById('tabChat');
     
     const btnAnalytics = document.getElementById('tabBtnAnalytics');
     const btnAI = document.getElementById('tabBtnAI');
     const btnRawMix = document.getElementById('tabBtnRawMix');
+    const btnChat = document.getElementById('tabBtnChat');
 
     const activeStyle = "flex: 1; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);";
     const inactiveStyle = "flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;";
@@ -965,26 +967,42 @@ window.switchTab = function(tabName) {
         tabAnalytics.style.display = 'block';
         tabAI.style.display = 'none';
         tabRawMix.style.display = 'none';
+        tabChat.style.display = 'none';
         
         btnAnalytics.style = activeStyle;
         btnAI.style = inactiveStyle;
         btnRawMix.style = inactiveStyle;
+        btnChat.style = inactiveStyle;
     } else if (tabName === 'ai') {
         tabAnalytics.style.display = 'none';
         tabAI.style.display = 'block';
         tabRawMix.style.display = 'none';
+        tabChat.style.display = 'none';
         
         btnAnalytics.style = inactiveStyle;
         btnAI.style = activeStyle;
         btnRawMix.style = inactiveStyle;
+        btnChat.style = inactiveStyle;
     } else if (tabName === 'rawmix') {
         tabAnalytics.style.display = 'none';
         tabAI.style.display = 'none';
         tabRawMix.style.display = 'block';
+        tabChat.style.display = 'none';
         
         btnAnalytics.style = inactiveStyle;
         btnAI.style = inactiveStyle;
         btnRawMix.style = activeStyle;
+        btnChat.style = inactiveStyle;
+    } else if (tabName === 'chat') {
+        tabAnalytics.style.display = 'none';
+        tabAI.style.display = 'none';
+        tabRawMix.style.display = 'none';
+        tabChat.style.display = 'block';
+        
+        btnAnalytics.style = inactiveStyle;
+        btnAI.style = inactiveStyle;
+        btnRawMix.style = inactiveStyle;
+        btnChat.style = activeStyle;
     }
 };
 
@@ -1386,3 +1404,164 @@ function updateRecipeTotals() {
         }
     }
 }
+
+// ==========================================
+// AI Assistant & RAG Implementation
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+    const chatHistory = document.getElementById("chatHistory");
+    const chatInput = document.getElementById("chatInput");
+    const btnSendChat = document.getElementById("btnSendChat");
+    const btnClearChat = document.getElementById("btnClearChat");
+    const btnRebuildRAG = document.getElementById("btnRebuildRAG");
+    const ragStatus = document.getElementById("ragStatus");
+    const citedSources = document.getElementById("citedSources");
+
+    let history = [];
+
+    // Clear history
+    if (btnClearChat) {
+        btnClearChat.addEventListener("click", () => {
+            history = [];
+            chatHistory.innerHTML = `
+                <div style="align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);">
+                    Hello! I am your AI Process & Quality Assistant. I have read the cement chemistry textbooks, equipment manuals, and ASTM standards in your <strong>knowledge_base</strong> folder. 
+                    <br><br>
+                    How can I help you troubleshoot your raw mix or strength properties today?
+                </div>
+            `;
+            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">No query run yet. Ask a question to see citations.</div>`;
+        });
+    }
+
+    // Append a message bubble to chat
+    function appendMessage(role, text) {
+        const bubble = document.createElement("div");
+        if (role === "user") {
+            bubble.style = "align-self: flex-end; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 0.8rem 1.2rem; border-radius: 12px 12px 0px 12px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05); color: #fff;";
+            bubble.innerText = text;
+        } else {
+            bubble.style = "align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);";
+            
+            // Render markdown-like formatting (bold, newlines) safely
+            let formattedText = text
+                .replace(/\n/g, "<br>")
+                .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+            bubble.innerHTML = formattedText;
+        }
+        chatHistory.appendChild(bubble);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    // Send Message
+    async function sendMessage() {
+        const query = chatInput.value.trim();
+        if (!query) return;
+
+        chatInput.value = "";
+        appendMessage("user", query);
+
+        // Show typing indicator
+        const typingIndicator = document.createElement("div");
+        typingIndicator.id = "typingIndicator";
+        typingIndicator.style = "align-self: flex-start; background: rgba(255, 255, 255, 0.02); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; color: #94a3b8; border: 1px dashed rgba(255,255,255,0.1);";
+        typingIndicator.innerText = "Thinking...";
+        chatHistory.appendChild(typingIndicator);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: query, history: history })
+            });
+
+            // Remove typing indicator
+            const ind = document.getElementById("typingIndicator");
+            if (ind) ind.remove();
+
+            if (!res.ok) {
+                const errData = await res.json();
+                appendMessage("model", `<span style="color:#ef4444;">Error: ${errData.detail || 'Could not reach Gemini model'}</span>`);
+                return;
+            }
+
+            const data = await res.json();
+            appendMessage("model", data.response);
+
+            // Update local history
+            history.push({ role: "user", content: query });
+            history.push({ role: "model", content: data.response });
+
+            // Keep history window to latest 10 messages
+            if (history.length > 20) {
+                history = history.slice(history.length - 20);
+            }
+
+            // Update cited sources list on sidebar
+            if (data.sources && data.sources.length > 0) {
+                citedSources.innerHTML = "";
+                data.sources.forEach(src => {
+                    const item = document.createElement("div");
+                    item.style = "padding: 0.5rem; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 3px solid var(--accent); margin-bottom: 0.3rem;";
+                    item.innerHTML = `
+                        <div style="font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${src.file}">${src.file}</div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-top:0.2rem; color:#94a3b8;">
+                            <span>Page ${src.page}</span>
+                            <span>Score: ${(src.score * 100).toFixed(0)}%</span>
+                        </div>
+                    `;
+                    citedSources.appendChild(item);
+                });
+            } else {
+                citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">No sources cited for this query.</div>`;
+            }
+
+        } catch (err) {
+            console.error(err);
+            const ind = document.getElementById("typingIndicator");
+            if (ind) ind.remove();
+            appendMessage("model", `<span style="color:#ef4444;">Error connecting to server.</span>`);
+        }
+    }
+
+    if (btnSendChat) btnSendChat.addEventListener("click", sendMessage);
+    if (chatInput) {
+        chatInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                sendMessage();
+            }
+        });
+    }
+
+    // Rebuild Vector Index
+    if (btnRebuildRAG) {
+        btnRebuildRAG.addEventListener("click", async () => {
+            const originalText = btnRebuildRAG.innerText;
+            btnRebuildRAG.disabled = true;
+            btnRebuildRAG.innerText = "Indexing Books (Please wait)...";
+            btnRebuildRAG.style.opacity = "0.7";
+            ragStatus.innerHTML = `Status: <strong style="color:var(--accent);">Indexing PDF books... (Could take 1-2 mins depending on file sizes)</strong>`;
+
+            try {
+                const res = await fetch("/api/rag/rebuild", { method: "POST" });
+                if (res.ok) {
+                    ragStatus.innerHTML = `Status: <strong style="color:#10b981;">Index Rebuilt & Synced!</strong>`;
+                    alert("RAG vector index has been successfully updated with new PDFs!");
+                } else {
+                    const err = await res.json();
+                    ragStatus.innerHTML = `Status: <strong style="color:#ef4444;">Index Failed</strong>`;
+                    alert(`Indexing failed: ${err.detail || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error(err);
+                ragStatus.innerHTML = `Status: <strong style="color:#ef4444;">Connection Error</strong>`;
+                alert("Error connecting to server to build index.");
+            } finally {
+                btnRebuildRAG.disabled = false;
+                btnRebuildRAG.innerText = originalText;
+                btnRebuildRAG.style.opacity = "1";
+            }
+        });
+    }
+});
