@@ -59,6 +59,7 @@
             <button class="btn-predict tab-btn" id="tabBtnAnalytics" onclick="switchTab('analytics')" style="flex: 1; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);">📊 Historical Analytics</button>
             <button class="btn-predict tab-btn" id="tabBtnAI" onclick="switchTab('ai')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">🤖 AI Mix Optimizer</button>
             <button class="btn-predict tab-btn" id="tabBtnRawMix" onclick="switchTab('rawmix')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">🧪 Raw Mix Design</button>
+            <button class="btn-predict tab-btn" id="tabBtnChat" onclick="switchTab('chat')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">📖 AI Assistant & Manuals</button>
         </div>
 
         <!-- Analytics Tab -->
@@ -577,6 +578,56 @@
                     <div id="rawmix_prompt_block" style="text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
                         <span style="font-size: 3rem; display: block; margin-bottom: 1rem;">🧪</span>
                         Fill in your raw materials and click <strong>"Calculate Feeder Proportions"</strong> to run FLS raw mix proportions.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Assistant & RAG Tab -->
+        <div id="tabChat" style="display: none;">
+            <div class="dashboard-grid" style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                <!-- Chat Window (Left Side, taking most space) -->
+                <div class="chart-container glass" style="flex: 2; min-width: 450px; display: flex; flex-direction: column; height: 600px; padding: 1.5rem; box-sizing: border-box;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.8rem;">
+                        <h2 style="margin: 0; font-size: 1.25rem;">💬 AI Process & Quality Assistant</h2>
+                        <button id="btnClearChat" class="btn-predict" style="width: auto; padding: 0.3rem 0.8rem; font-size: 0.85rem; margin: 0; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;">Clear Chat</button>
+                    </div>
+                    
+                    <!-- Messages Area -->
+                    <div id="chatHistory" style="flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--glass-border); border-radius: 8px; background: rgba(15, 23, 42, 0.4); margin-bottom: 1rem;">
+                        <div style="align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);">
+                            Hello! I am your AI Process & Quality Assistant. I have read the cement chemistry textbooks, equipment manuals, and ASTM standards in your <strong>knowledge_base</strong> folder. 
+                            <br><br>
+                            How can I help you troubleshoot your raw mix or strength properties today?
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Input -->
+                    <div style="display: flex; gap: 0.8rem;">
+                        <input type="text" id="chatInput" class="glass-select" style="flex: 1; background: rgba(15, 23, 42, 0.8); padding: 0.8rem 1.2rem; font-size: 0.95rem; border-radius: 8px;" placeholder="Ask about kiln operations, ASTM standards, raw mix calculation...">
+                        <button id="btnSendChat" class="btn-predict" style="width: auto; padding: 0.8rem 1.5rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);">Send</button>
+                    </div>
+                </div>
+
+                <!-- Knowledge Base Sidebar (Right Side) -->
+                <div class="predictor-container glass" style="flex: 1; min-width: 300px; display: flex; flex-direction: column; height: 600px; padding: 1.5rem; box-sizing: border-box;">
+                    <h2 style="font-size: 1.25rem;">📖 Knowledge Base Index</h2>
+                    <p class="section-desc" style="margin-bottom: 1rem;">Scan and vector-index your PDF standards, operations manuals, and textbooks.</p>
+                    
+                    <button id="btnRebuildRAG" class="btn-predict" style="width: 100%; padding: 0.8rem; font-size: 0.95rem; margin-bottom: 1.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        🔄 Rebuild Vector Index
+                    </button>
+                    
+                    <div id="ragStatus" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 1rem;">
+                        Status: <strong>Index Available</strong> (Incremental Sync supported)
+                    </div>
+
+                    <!-- Referenced Sources list from last question -->
+                    <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                        <h3 style="font-size: 0.9rem; color: var(--accent); margin-bottom: 0.5rem;">Sources Cited in Last Query:</h3>
+                        <div id="citedSources" style="flex: 1; overflow-y: auto; padding: 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="text-align: center; padding: 2rem 0; color: #64748b;">No query run yet. Ask a question to see citations.</div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -7,3 +7,4 @@ uvicorn
 openpyxl
 pypdf
 xlrd
+google-generativeai
