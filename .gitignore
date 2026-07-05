@@ -5,3 +5,5 @@ __pycache__/
 *.xlsx
 *.log
 .DS_Store
+.env
+*.pkl
