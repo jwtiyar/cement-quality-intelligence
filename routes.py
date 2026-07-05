@@ -263,7 +263,7 @@ async def chat(request: Request):
         if index and index.get("chunks") and index.get("embeddings") is not None:
             # 1. Embed query
             res = genai.embed_content(
-                model="models/text-embedding-004",
+                model="models/embedding-001",
                 content=message,
                 task_type="retrieval_query"
             )

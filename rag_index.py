@@ -79,7 +79,7 @@ def generate_embeddings_batch(texts, batch_size=100):
         print(f"  Embedding batch {i//batch_size + 1}/{-(-len(texts)//batch_size)}...")
         try:
             result = genai.embed_content(
-                model="models/text-embedding-004",
+                model="models/embedding-001",
                 content=batch,
                 task_type="retrieval_document"
             )
