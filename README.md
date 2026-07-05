@@ -6,6 +6,7 @@ An intelligent, full-stack dashboard for cement plant quality control. This appl
 
 - **Machine Learning Strength Prediction:** Automatically trains XGBoost models on your historical data (spanning 10+ years) to predict 28-day compressive strength based on early strength (2/3 day), chemistry, and fineness. Separate models are trained dynamically for OPC, SRC, and SBC.
 - **Raw Mix Optimization Solver:** Enter the chemistry of your raw materials (Limestone, Clay, Iron Ore, etc.) and target moduli (LSF, SM, AM). The solver automatically calculates the optimal blend proportions, predicts resulting clinker chemistry (SiO₂, Al₂O₃, Fe₂O₃, CaO), Bogue phases (C₃S, C₂S, C₃A, C₄AF), and ensures Liquid Phase content is within safe sintering limits (23%-29%).
+- **AI Process & Quality Assistant (RAG):** Chat with your plant manuals, ASTM standards, or textbooks right inside the dashboard. A local TF-IDF search engine retrieves the exact relevant paragraphs and pages, and **Gemini 3 Flash** synthesizes an operational troubleshooting response citing the exact source documents.
 - **Automated Anomaly Detection:** Validates thousands of historical daily report records against strict ASTM C150 and EN 197-1 chemical/strength standards. Suspicious values (like typos in Excel sheets) trigger smart alerts in the dashboard UI indicating the date, cement type, and out-of-bounds parameter.
 - **Dynamic Excel Synchronization:** Extracts and cleans data from messy historical daily report Excel files dynamically. A single click in the UI syncs the latest data without needing server restarts.
 
@@ -46,16 +47,17 @@ If you run this application and the year folders (`202X`) are missing from the p
 ### Prerequisites
 - Python 3.10 or newer installed on your system.
 - Git (optional, if you want to clone from a repository instead of copying files).
+- A Gemini API Key (needed for the AI Chat Assistant).
 
-### Environment Setup (Windows)
+### 1. Environment Setup (Windows)
 1. Double-click the `start_dashboard.bat` script.
 2. The script will automatically:
    - Create a virtual environment (`venv`).
-   - Install all required libraries (`fastapi`, `uvicorn`, `pandas`, `xgboost`, `scikit-learn`, etc.).
+   - Install all required libraries (`fastapi`, `uvicorn`, `pandas`, `xgboost`, `scikit-learn`, `pypdf`, `google-generativeai`).
    - Scan your Excel reports and construct the initial consolidated CSV.
    - Boot up the local server.
 
-### Environment Setup (Linux/macOS)
+### 2. Environment Setup (Linux/macOS)
 1. Open a terminal in the project directory.
 2. Run the initialization script:
    ```bash
@@ -65,6 +67,17 @@ If you run this application and the year folders (`202X`) are missing from the p
    ```bash
    chmod +x start_dashboard.sh
    ```
+
+### 3. Setup Gemini API Key
+To enable the AI chat feature, configure your API key in a `.env` file in the project folder:
+```bash
+printf "Enter GEMINI_API_KEY (typing hidden): " && read -s val && echo && echo "GEMINI_API_KEY=$val" >> ".env" && echo "Saved."
+```
+
+### 4. Index Knowledge Base Manuals
+1. Drop your PDF textbooks, standards, or manuals into the `cement_app/knowledge_base/` folder.
+2. Open the dashboard at `http://127.0.0.1:8500`, switch to the **"AI Assistant & Manuals"** tab, and click the green **"Rebuild Vector Index"** button.
+3. The indexer will instantly parse your files locally and sync them with the chatbot.
 
 ## Usage Instructions
 
@@ -89,7 +102,8 @@ If you run this application and the year folders (`202X`) are missing from the p
 ## Project Architecture
 
 - `app.py`: The main entry point that starts the Uvicorn web server.
-- `routes.py`: Defines all FastAPI backend endpoints (`/api/data`, `/api/refresh`, `/api/rawmix/calculate`, etc.).
+- `routes.py`: Defines all FastAPI backend endpoints, including the RAG `/api/chat` and `/api/rag/rebuild` handlers.
+- `rag_index.py`: Local TF-IDF search index builder. Extracts text from PDFs and builds a search index saved to `knowledge_base/rag_index.pkl`.
 - `state.py`: Manages the in-memory data cache, generates the anomaly detection lists, and performs global state management.
 - `build_dataset.py`: Scans and parses messy historical Excel files into a clean pandas DataFrame (`ALL_CEMENT_DATA.csv`).
 - `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data.
