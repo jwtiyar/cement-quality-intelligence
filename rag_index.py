@@ -69,25 +69,35 @@ def save_index(index):
     with open(INDEX_PATH, 'wb') as f:
         pickle.dump(index, f)
 
-def generate_embeddings_batch(texts, batch_size=100):
+def generate_embeddings_batch(texts, batch_size=1000):
+    import time
     if not api_key:
         raise ValueError("GEMINI_API_KEY / GOOGLE_API_KEY environment variable is not set!")
     
     embeddings = []
-    for i in range(0, len(texts), batch_size):
+    i = 0
+    while i < len(texts):
         batch = texts[i:i+batch_size]
         print(f"  Embedding batch {i//batch_size + 1}/{-(-len(texts)//batch_size)}...")
         try:
             result = genai.embed_content(
-                model="models/embedding-001",
+                model="models/gemini-embedding-001",
                 content=batch,
                 task_type="retrieval_document"
             )
             embeddings.extend(result['embedding'])
+            i += batch_size
+            time.sleep(1.5) # Sleep to stay under 100 RPM quota
         except Exception as e:
-            print(f"  Error generating embeddings for batch: {e}")
-            # Fallback to zeros to keep dimensions matching
-            embeddings.extend([[0.0] * 768 for _ in batch])
+            if "429" in str(e):
+                print(f"  Rate limited (429). Sleeping for 35s before retry...")
+                time.sleep(35)
+                # Keep i the same so it retries this batch on next iteration
+                continue
+            else:
+                print(f"  Error generating embeddings for batch: {e}")
+                embeddings.extend([[0.0] * 768 for _ in batch])
+                i += batch_size
     return np.array(embeddings, dtype=np.float32)
 
 def rebuild_index():
