@@ -963,47 +963,15 @@ window.switchTab = function(tabName) {
     const activeStyle = "flex: 1; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);";
     const inactiveStyle = "flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;";
 
-    if (tabName === 'analytics') {
-        tabAnalytics.style.display = 'block';
-        tabAI.style.display = 'none';
-        tabRawMix.style.display = 'none';
-        tabChat.style.display = 'none';
-        
-        btnAnalytics.style = activeStyle;
-        btnAI.style = inactiveStyle;
-        btnRawMix.style = inactiveStyle;
-        btnChat.style = inactiveStyle;
-    } else if (tabName === 'ai') {
-        tabAnalytics.style.display = 'none';
-        tabAI.style.display = 'block';
-        tabRawMix.style.display = 'none';
-        tabChat.style.display = 'none';
-        
-        btnAnalytics.style = inactiveStyle;
-        btnAI.style = activeStyle;
-        btnRawMix.style = inactiveStyle;
-        btnChat.style = inactiveStyle;
-    } else if (tabName === 'rawmix') {
-        tabAnalytics.style.display = 'none';
-        tabAI.style.display = 'none';
-        tabRawMix.style.display = 'block';
-        tabChat.style.display = 'none';
-        
-        btnAnalytics.style = inactiveStyle;
-        btnAI.style = inactiveStyle;
-        btnRawMix.style = activeStyle;
-        btnChat.style = inactiveStyle;
-    } else if (tabName === 'chat') {
-        tabAnalytics.style.display = 'none';
-        tabAI.style.display = 'none';
-        tabRawMix.style.display = 'none';
-        tabChat.style.display = 'block';
-        
-        btnAnalytics.style = inactiveStyle;
-        btnAI.style = inactiveStyle;
-        btnRawMix.style = inactiveStyle;
-        btnChat.style = activeStyle;
-    }
+    if (tabAnalytics) tabAnalytics.style.display = (tabName === 'analytics') ? 'block' : 'none';
+    if (tabAI) tabAI.style.display = (tabName === 'ai') ? 'block' : 'none';
+    if (tabRawMix) tabRawMix.style.display = (tabName === 'rawmix') ? 'block' : 'none';
+    if (tabChat) tabChat.style.display = (tabName === 'chat') ? 'block' : 'none';
+
+    if (btnAnalytics) btnAnalytics.style = (tabName === 'analytics') ? activeStyle : inactiveStyle;
+    if (btnAI) btnAI.style = (tabName === 'ai') ? activeStyle : inactiveStyle;
+    if (btnRawMix) btnRawMix.style = (tabName === 'rawmix') ? activeStyle : inactiveStyle;
+    if (btnChat) btnChat.style = (tabName === 'chat') ? activeStyle : inactiveStyle;
 };
 
 // FLS proportioning — server-side via /api/rawmix/calculate
