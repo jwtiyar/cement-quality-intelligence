@@ -34,26 +34,33 @@ def chunk_text(text, source_name, page_num, chunk_size=800, overlap=150):
 def rebuild_index():
     print("Building local TF-IDF RAG index...")
     
-    # Scan for PDF files
-    pdf_files = []
+    # Scan for PDF and TXT files
+    knowledge_files = []
     for f in os.listdir(KNOWLEDGE_DIR):
-        if f.lower().endswith('.pdf') and f != "rag_index.pkl":
-            pdf_files.append(f)
+        ext = os.path.splitext(f)[1].lower()
+        if ext in ['.pdf', '.txt'] and f != "rag_index.pkl":
+            knowledge_files.append((f, ext))
             
     all_chunks = []
     files_meta = {}
     
-    for f in pdf_files:
+    for f, ext in knowledge_files:
         filepath = os.path.join(KNOWLEDGE_DIR, f)
         file_hash = get_file_hash(filepath)
         print(f"Parsing {f}...")
         try:
-            reader = PdfReader(filepath)
             file_chunks = []
-            for page_idx, page in enumerate(reader.pages):
-                text = page.extract_text()
-                if text and len(text.strip()) > 50:
-                    file_chunks.extend(chunk_text(text, f, page_idx + 1))
+            if ext == '.pdf':
+                reader = PdfReader(filepath)
+                for page_idx, page in enumerate(reader.pages):
+                    text = page.extract_text()
+                    if text and len(text.strip()) > 50:
+                        file_chunks.extend(chunk_text(text, f, page_idx + 1))
+            elif ext == '.txt':
+                with open(filepath, 'r', encoding='utf-8', errors='ignore') as txt_file:
+                    text = txt_file.read()
+                    if text and len(text.strip()) > 20:
+                        file_chunks.extend(chunk_text(text, f, 1))
             
             if file_chunks:
                 all_chunks.extend(file_chunks)
@@ -63,7 +70,7 @@ def rebuild_index():
                 }
                 print(f"  Successfully parsed {f} ({len(file_chunks)} chunks)")
             else:
-                print(f"  No text found in {f} (could be a scanned PDF image).")
+                print(f"  No text found in {f}.")
         except Exception as e:
             print(f"Error parsing {f}: {e}")
             
