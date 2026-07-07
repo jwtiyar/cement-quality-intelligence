@@ -12,7 +12,7 @@ ML_EXCLUDED_YEARS = {2019}
 
 NUMERIC_COLS = [
     "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
-    "LSF", "C3S", "C3A", "Fineness",
+    "LSF", "C3S", "C2S", "C3A", "C4AF", "SM", "AM", "L.O.I", "Fineness",
     "Strength_Early", "Strength_28D", "Early_Strength_Days",
 ]
 

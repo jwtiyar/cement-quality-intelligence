@@ -253,8 +253,10 @@ async def chat(request: Request):
         if not api_key:
             raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
 
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
+        from google import genai
+        from google.genai import types
+        
+        client = genai.Client(api_key=api_key)
 
         index = get_rag_index()
         retrieved_contexts = []
@@ -284,9 +286,6 @@ async def chat(request: Request):
                         "score": round(score, 3)
                     })
 
-        # 3. Create model & chat
-        model = genai.GenerativeModel("models/gemini-3-flash-preview")
-        
         # Format the system instruction
         context_str = "\n\n".join([f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}" for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))])
         
@@ -300,12 +299,20 @@ async def chat(request: Request):
         formatted_history = []
         for turn in history:
             role = "user" if turn.get("role") == "user" else "model"
-            formatted_history.append({"role": role, "parts": [turn.get("content", "")]})
+            formatted_history.append(
+                types.Content(
+                    role=role,
+                    parts=[types.Part.from_text(text=turn.get("content", ""))]
+                )
+            )
             
-        chat_session = model.start_chat(history=formatted_history)
+        chat_session = client.chats.create(
+            model="gemini-2.5-flash",
+            history=formatted_history
+        )
         
         prompt = f"{system_instruction}\n\nUser Question: {message}"
-        response = chat_session.send_message(prompt)
+        response = chat_session.send_message(message=prompt)
         
         # Deduplicate sources
         unique_sources = []
