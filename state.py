@@ -83,9 +83,9 @@ def write_dataset_summary_to_file(df: pd.DataFrame) -> None:
             f.write(f"  - Lime Saturation Factor (LSF): {sub['LSF'].mean():.4f}, SM: {sub['SM'].mean():.4f}, AM: {sub['AM'].mean():.4f}\n")
             f.write(f"  - Bogue Phases: C3S={sub['C3S'].mean():.2f}%, C2S={sub['C2S'].mean():.2f}%, C3A={sub['C3A'].mean():.2f}%, C4AF={sub['C4AF'].mean():.2f}%\n")
             
-        f.write("\n--- RECENT DAILY LABORATORY RESULTS (LATEST 30 RECORDS) ---\n")
-        # Sort by date descending and get top 30
-        recent = df.dropna(subset=["Date_dt"]).sort_values("Date_dt", ascending=False).head(30)
+        f.write("\n--- RECENT DAILY LABORATORY RESULTS (LATEST 90 RECORDS) ---\n")
+        # Sort by date descending and get top 90
+        recent = df.dropna(subset=["Date_dt"]).sort_values("Date_dt", ascending=False).head(90)
         for _, row in recent.iterrows():
             date_str = str(row["Date_str"])
             f.write(f"\nDate: {date_str} | Cement Type: {row['Cement_Type']}\n")
