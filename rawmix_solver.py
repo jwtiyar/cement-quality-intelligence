@@ -223,9 +223,45 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             explanation_parts.append(f"<li><strong>Sand</strong> balances the Silica Modulus (SM) to {target_sm}.</li>")
             explanation_parts.append(f"<li><strong>Iron Ore/Pyrite</strong> adjusts the Alumina Modulus (AM) to {target_am}.</li></ul>")
     else:
-        explanation_parts.append("ℹ️ **Recipe Calculation:** Proportions were manually provided.")
         if has_negatives:
-            explanation_parts.append("<br><strong>Warning:</strong> You entered negative proportions.")
+            explanation_parts.append("🚨 **Invalid Recipe:** Some proportions are negative. All feeder proportions must be ≥ 0%.")
+        else:
+            targets_advice = []
+            if cement_type == "SRC":
+                if cl_lsf > 96.0:
+                    targets_advice.append(f"LSF ({cl_lsf:.1f}%) is above 96% — reduce Limestone or increase SiO₂ to avoid hard burning.")
+                elif cl_lsf < 90.0:
+                    targets_advice.append(f"LSF ({cl_lsf:.1f}%) is low — increase Limestone to boost C₃S and 28-day strength.")
+                if cl_am > 1.0:
+                    targets_advice.append(f"AM ({cl_am:.2f}) exceeds 1.0 — reduce Clay or increase Iron Ore to lower C₃A for SRC compliance.")
+                if cl_sm > 3.0:
+                    targets_advice.append(f"SM ({cl_sm:.2f}) is high — add more Clay or reduce Sand to improve burnability.")
+                elif cl_sm < 2.0:
+                    targets_advice.append(f"SM ({cl_sm:.2f}) is low — add Sand to increase liquid phase viscosity.")
+            else:
+                if cl_lsf > 97.0:
+                    targets_advice.append(f"LSF ({cl_lsf:.1f}%) exceeds 97% — reduce Limestone or increase SiO₂ to prevent free lime.")
+                elif cl_lsf < 92.0:
+                    targets_advice.append(f"LSF ({cl_lsf:.1f}%) is below 92% — increase Limestone to improve strength potential.")
+                if cl_am > 1.8:
+                    targets_advice.append(f"AM ({cl_am:.2f}) is high — increase Iron Ore supply (or reduce Clay) to lower liquid viscosity.")
+                elif cl_am < 1.2:
+                    targets_advice.append(f"AM ({cl_am:.2f}) is low — reduce Iron Ore or increase Clay to avoid sticky coating.")
+                if cl_sm > 2.8:
+                    targets_advice.append(f"SM ({cl_sm:.2f}) is high — add Clay or reduce Sand to improve burnability and coating.")
+                elif cl_sm < 2.0:
+                    targets_advice.append(f"SM ({cl_sm:.2f}) is low — add Sand to increase liquid phase viscosity.")
+
+            if targets_advice:
+                explanation_parts.append("📊 **Recipe Evaluation & Adjustment Tips:**")
+                explanation_parts.append("<ul>")
+                for tip in targets_advice:
+                    explanation_parts.append(f"<li>{tip}</li>")
+                explanation_parts.append("</ul>")
+            else:
+                explanation_parts.append("✅ **Recipe is within typical ranges.** No adjustments needed.")
+
+            explanation_parts.append("<br><i>Tip: Switch to <strong>Solve for Target</strong> mode if you want the solver to automatically find proportions that hit specific LSF / SM / AM targets.</i>")
 
     return {
         "dry_proportions": {
