@@ -4,6 +4,20 @@ cd "$(dirname "$0")"
 source venv/bin/activate
 
 echo "==========================================="
+echo "0. Verifying all dependencies..."
+echo "==========================================="
+./venv/bin/python _check_deps.py
+if [ $? -ne 0 ]; then
+    echo "Missing packages detected. Installing..."
+    pip install -r requirements.txt --quiet
+    ./venv/bin/python _check_deps.py
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Some packages failed to install."
+        exit 1
+    fi
+fi
+
+echo "==========================================="
 echo "1. Checking Dataset..."
 echo "==========================================="
 if [ ! -f "ALL_CEMENT_DATA.csv" ]; then
@@ -26,4 +40,3 @@ echo "Keep this terminal open to keep the server running. Press Ctrl+C to stop i
 echo "==========================================="
 echo ""
 ./venv/bin/python app.py
-

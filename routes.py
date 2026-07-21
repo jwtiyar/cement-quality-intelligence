@@ -253,9 +253,16 @@ async def chat(request: Request):
         if not api_key:
             raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
 
-        from google import genai
-        from google.genai import types
-        
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError:
+            raise HTTPException(
+                status_code=500,
+                detail="google-genai package is missing. The server tried to auto-install it on startup, "
+                       "but it may have failed. Run: pip install google-genai"
+            )
+
         client = genai.Client(api_key=api_key)
 
         index = get_rag_index()
