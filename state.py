@@ -55,44 +55,135 @@ def _find_28d_era_start(df: pd.DataFrame) -> int | None:
     return None
 
 
+def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
+    """Return a detailed, structured summary of plant dataset for LLM chat context."""
+    if df is None:
+        df = df_global
+    if df is None or df.empty:
+        return "No live laboratory dataset loaded."
+
+    valid_df = df.dropna(subset=["Date_dt"]).sort_values("Date_dt", ascending=False)
+    if valid_df.empty:
+        return "No dated laboratory records found."
+
+    earliest = valid_df["Date_dt"].min().strftime("%Y-%m-%d")
+    latest = valid_df["Date_dt"].max().strftime("%Y-%m-%d")
+    total_records = len(df)
+
+    lines = []
+    lines.append("=== LIVE PLANT LABORATORY DATASET SUMMARY ===")
+    lines.append(f"Total Daily Laboratory Records: {total_records}")
+    lines.append(f"Data Coverage Range: {earliest} to {latest} (Latest Date: {latest})")
+
+    # Overall averages per cement type
+    lines.append("\n--- OVERALL HISTORICAL AVERAGES PER CEMENT TYPE ---")
+    for ctype in sorted(df["Cement_Type"].unique()):
+        sub = df[df["Cement_Type"] == ctype]
+        s28_avg = sub["Strength_28D"].mean()
+        se_avg = sub["Strength_Early"].mean()
+        fin_avg = sub["Fineness"].mean()
+        lsf_avg = sub["LSF"].mean()
+        c3s_avg = sub["C3S"].mean()
+
+        lsf_disp = lsf_avg * 100 if (pd.notna(lsf_avg) and lsf_avg < 2) else lsf_avg
+        lines.append(
+            f"• [{ctype}] ({len(sub)} tests): 28D Strength Avg={s28_avg:.1f} MPa | "
+            f"Early Strength Avg={se_avg:.1f} MPa | Blaine Avg={fin_avg:.0f} cm²/g | "
+            f"LSF Avg={lsf_disp:.1f}% | C3S Avg={c3s_avg:.1f}%"
+        )
+
+    # Monthly Summary (All available months in recent 24 months)
+    lines.append("\n--- MONTHLY STRENGTH & QUALITY AVERAGES (LAST 24 MONTHS) ---")
+    valid_df_copy = valid_df.copy()
+    valid_df_copy["YM"] = valid_df_copy["Date_dt"].dt.to_period("M")
+    unique_yms = sorted(valid_df_copy["YM"].unique(), reverse=True)[:24]
+
+    for ym in unique_yms:
+        ym_df = valid_df_copy[valid_df_copy["YM"] == ym]
+        for ctype in sorted(ym_df["Cement_Type"].unique()):
+            sub = ym_df[ym_df["Cement_Type"] == ctype]
+            s28_vals = sub["Strength_28D"].dropna()
+            se_vals = sub["Strength_Early"].dropna()
+            fin_vals = sub["Fineness"].dropna()
+            lsf_vals = sub["LSF"].dropna()
+
+            s28_str = f"Avg={s28_vals.mean():.1f} MPa (Min={s28_vals.min():.1f}, Max={s28_vals.max():.1f})" if not s28_vals.empty else "N/A"
+            se_str = f"Avg={se_vals.mean():.1f} MPa" if not se_vals.empty else "N/A"
+            fin_str = f"Avg={fin_vals.mean():.0f} cm²/g" if not fin_vals.empty else "N/A"
+            if not lsf_vals.empty:
+                m_lsf = lsf_vals.mean()
+                disp_lsf = m_lsf * 100 if m_lsf < 2 else m_lsf
+                lsf_str = f"LSF={disp_lsf:.1f}%"
+            else:
+                lsf_str = "N/A"
+
+            lines.append(
+                f"• {ym} | {ctype} ({len(sub)} records) -> 28D Strength: {s28_str} | "
+                f"Early Strength: {se_str} | Blaine: {fin_str} | {lsf_str}"
+            )
+
+    # Weekly Summary (Recent 12 Weeks)
+    lines.append("\n--- RECENT WEEKLY STRENGTH AVERAGES (LAST 12 WEEKS) ---")
+    valid_df_copy["YW"] = valid_df_copy["Date_dt"].dt.to_period("W")
+    unique_yws = sorted(valid_df_copy["YW"].unique(), reverse=True)[:12]
+
+    for yw in unique_yws:
+        yw_df = valid_df_copy[valid_df_copy["YW"] == yw]
+        for ctype in sorted(yw_df["Cement_Type"].unique()):
+            sub = yw_df[yw_df["Cement_Type"] == ctype]
+            s28_vals = sub["Strength_28D"].dropna()
+            se_vals = sub["Strength_Early"].dropna()
+            fin_vals = sub["Fineness"].dropna()
+
+            s28_str = f"{s28_vals.mean():.1f} MPa" if not s28_vals.empty else "N/A"
+            se_str = f"{se_vals.mean():.1f} MPa" if not se_vals.empty else "N/A"
+            fin_str = f"{fin_vals.mean():.0f} cm²/g" if not fin_vals.empty else "N/A"
+
+            start_str = yw.start_time.strftime("%Y-%m-%d")
+            end_str = yw.end_time.strftime("%Y-%m-%d")
+            lines.append(
+                f"• Week {start_str} to {end_str} | {ctype} ({len(sub)} records) -> "
+                f"28D Strength: {s28_str} | Early Strength: {se_str} | Blaine: {fin_str}"
+            )
+
+    # Recent Daily Test Records (Latest 60 Daily Tests)
+    lines.append("\n--- LATEST DAILY LABORATORY TEST RESULTS (MOST RECENT 60 TEST DAYS) ---")
+    lines.append("(Note: The most recent 2-3 days may show 'Pending Curing / 2-3 Day Test in Progress' because cement cubes take time to cure before crushing.)")
+    recent_60 = valid_df.head(60)
+    for _, row in recent_60.iterrows():
+        d_str = str(row["Date_str"])
+        ctype = row["Cement_Type"]
+        
+        s28_raw = row.get("Strength_28D")
+        s28 = f"{s28_raw:.1f} MPa" if pd.notna(s28_raw) else "Pending 28D Curing"
+        
+        se_raw = row.get("Strength_Early")
+        se = f"{se_raw:.1f} MPa" if pd.notna(se_raw) else "Pending Early Curing"
+        
+        fin = f"{row['Fineness']:.0f} cm²/g" if pd.notna(row.get("Fineness")) else "N/A"
+        lsf_raw = row.get("LSF", 0)
+        lsf_val = lsf_raw * 100 if (pd.notna(lsf_raw) and lsf_raw < 2) else lsf_raw
+        lsf_str = f"{lsf_val:.1f}%" if pd.notna(lsf_raw) else "N/A"
+        c3s = f"{row.get('C3S', 0):.1f}%" if pd.notna(row.get("C3S")) else "N/A"
+        cao = f"{row.get('CaO', 0):.1f}%" if pd.notna(row.get("CaO")) else "N/A"
+        so3 = f"{row.get('SO3', 0):.2f}%" if pd.notna(row.get("SO3")) else "N/A"
+
+        lines.append(
+            f"Date: {d_str} | Type: {ctype} | 28D Strength: {s28} | Early Strength: {se} | "
+            f"Blaine: {fin} | LSF: {lsf_str} | C3S: {c3s} | CaO: {cao} | SO3: {so3}"
+        )
+
+    return "\n".join(lines)
+
+
 def write_dataset_summary_to_file(df: pd.DataFrame) -> None:
     """Generate a clean text summary of historical daily results and save to knowledge_base."""
     os.makedirs("knowledge_base", exist_ok=True)
     summary_path = os.path.join("knowledge_base", "latest_daily_results.txt")
     
+    summary_text = get_live_dataset_summary(df)
     with open(summary_path, "w", encoding="utf-8") as f:
-        f.write("=== CEMENT PLANT LIVE QUALITY & DAILY REPORTS DATA SUMMARY ===\n")
-        f.write(f"Report Generated At: {datetime.now(timezone.utc).isoformat()}\n")
-        f.write(f"Total Daily Laboratory Records: {len(df)} records\n")
-        f.write(f"Years Covered: {df['Year'].min()} to {df['Year'].max()}\n\n")
-        
-        f.write("--- CEMENT TYPE RECORD COUNTS ---\n")
-        for ctype, count in df["Cement_Type"].value_counts().items():
-            f.write(f"- {ctype}: {count} daily records\n")
-        f.write("\n")
-        
-        f.write("--- OVERALL HISTORICAL QUALITY AVERAGES ---\n")
-        for ctype in sorted(df["Cement_Type"].unique()):
-            sub = df[df["Cement_Type"] == ctype]
-            f.write(f"\n[{ctype} averages]:\n")
-            f.write(f"  - 28-Day Strength: {sub['Strength_28D'].mean():.2f} MPa (Averaged over {sub['Strength_28D'].notna().sum()} records)\n")
-            f.write(f"  - 3-Day/Early Strength: {sub['Strength_Early'].mean():.2f} MPa\n")
-            f.write(f"  - Blaine Fineness (SSB): {sub['Fineness'].mean():.1f} cm2/g\n")
-            f.write(f"  - CaO: {sub['CaO'].mean():.2f}%, SiO2: {sub['SiO2'].mean():.2f}%, Al2O3: {sub['Al2O3'].mean():.2f}%, Fe2O3: {sub['Fe2O3'].mean():.2f}%\n")
-            f.write(f"  - SO3: {sub['SO3'].mean():.2f}%, MgO: {sub['MgO'].mean():.2f}%\n")
-            f.write(f"  - Lime Saturation Factor (LSF): {sub['LSF'].mean():.4f}, SM: {sub['SM'].mean():.4f}, AM: {sub['AM'].mean():.4f}\n")
-            f.write(f"  - Bogue Phases: C3S={sub['C3S'].mean():.2f}%, C2S={sub['C2S'].mean():.2f}%, C3A={sub['C3A'].mean():.2f}%, C4AF={sub['C4AF'].mean():.2f}%\n")
-            
-        f.write("\n--- RECENT DAILY LABORATORY RESULTS (LATEST 90 RECORDS) ---\n")
-        # Sort by date descending and get top 90
-        recent = df.dropna(subset=["Date_dt"]).sort_values("Date_dt", ascending=False).head(90)
-        for _, row in recent.iterrows():
-            date_str = str(row["Date_str"])
-            f.write(f"\nDate: {date_str} | Cement Type: {row['Cement_Type']}\n")
-            f.write(f"  Chemical: CaO={row.get('CaO', 0):.2f}%, SiO2={row.get('SiO2', 0):.2f}%, Al2O3={row.get('Al2O3', 0):.2f}%, Fe2O3={row.get('Fe2O3', 0):.2f}%, SO3={row.get('SO3', 0):.2f}%, MgO={row.get('MgO', 0):.2f}%\n")
-            f.write(f"  Moduli: LSF={row.get('LSF', 0):.4f}, SM={row.get('SM', 0):.4f}, AM={row.get('AM', 0):.4f}\n")
-            f.write(f"  Bogue: C3S={row.get('C3S', 0):.2f}%, C2S={row.get('C2S', 0):.2f}%, C3A={row.get('C3A', 0):.2f}%, C4AF={row.get('C4AF', 0):.2f}%\n")
-            f.write(f"  Physical: Fineness={row.get('Fineness', 0):.1f} cm2/g | Early Strength={row.get('Strength_Early', 0):.2f} MPa | 28D Strength={row.get('Strength_28D', 0):.2f} MPa\n")
+        f.write(summary_text)
 
 
 def reload_from_csv(csv_path: str | None = None) -> None:
