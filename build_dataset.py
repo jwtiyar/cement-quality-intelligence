@@ -1,10 +1,10 @@
+import calendar
 import os
 import pandas as pd
 from datetime import datetime, timedelta
 
 def get_days_in_month(year, month):
-    if month == 12: return 31
-    return (datetime(year, month+1, 1) - timedelta(days=1)).day
+    return calendar.monthrange(year, month)[1]
 
 def parse_sheet_block(df, year, sheet_name, c_type, start_row):
     records = []

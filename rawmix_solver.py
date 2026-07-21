@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from chemistry import BoguePhases, calc_liquid_content, clinker_lsf_percent, rawmix_diagnostics
+from chemistry import BoguePhases, OxideAnalysis, calc_liquid_content, clinker_lsf_percent, rawmix_diagnostics
 
 
 @dataclass
@@ -170,7 +170,8 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     c3a = 2.650 * al2o3 - 1.692 * fe2o3
     c4af = 3.043 * fe2o3
     phases = BoguePhases(C3S=c3s, C2S=c2s, C3A=c3a, C4AF=c4af)
-    lc = calc_liquid_content(phases)
+    ox_clinker = OxideAnalysis(MgO=mgo, Na2O=na2o, K2O=k2o)
+    lc = calc_liquid_content(phases, ox_clinker)
 
     x_dry = [
         x_cl[i] / (1.0 - 0.01 * materials[MATERIAL_NAMES[i]].LOI) for i in range(4)
