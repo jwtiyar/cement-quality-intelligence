@@ -22,11 +22,18 @@ if not exist venv (
     call venv\Scripts\activate.bat
 )
 
-REM 2. Dynamic check for missing dependencies
-python -c "import fastapi" >nul 2>&1
+REM 2. Verify every single dependency is importable
+echo [INFO] Verifying all dependencies are installed...
+python _check_deps.py
 if %errorlevel% neq 0 (
-    echo [INFO] Missing required packages detected. Installing/updating dependencies...
+    echo [INFO] Missing packages detected. Installing...
     pip install -r requirements.txt
+    python _check_deps.py
+    if %errorlevel% neq 0 (
+        echo [ERROR] Some packages failed to install. Check the error above.
+        pause
+        exit /b 1
+    )
 )
 
 echo.
