@@ -15,7 +15,7 @@ except ImportError:  # sklearn < 1.4
     def _rmse_fn(y_true, y_pred):
         return float(_mse_fn(y_true, y_pred) ** 0.5)
 
-from sklearn.model_selection import train_test_split, GridSearchCV, KFold
+from sklearn.model_selection import GridSearchCV, KFold
 
 from data_prep import CEMENT_TYPES, ML_EXCLUDED_YEARS, ml_training_frame
 
@@ -64,13 +64,18 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 date_max = str(valid_dates.max())
 
         if len(df_ml) >= MIN_TRAIN_SAMPLES:
+            # Chronological split: train on the earliest 80% of records,
+            # validate on the most recent 20%. The model predicts the future,
+            # so validation must never leak future rows into training.
+            df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
+            split_idx = int(len(df_ml) * 0.8)
             X = df_ml[ML_FEATURES]
             y = df_ml["Strength_28D"]
+            X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+            y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-            # Random 80/20 split for final test metrics
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
+            val_date_min = str(df_ml["Date_str"].iloc[split_idx])
+            val_date_max = str(df_ml["Date_str"].iloc[-1])
 
             # K-Fold Cross Validation within the training set for hyperparameter tuning
             kf = KFold(n_splits=3, shuffle=True, random_state=42)
@@ -117,6 +122,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             "trainSamples": int(len(df_ml)),
             "excludedYears": sorted(ML_EXCLUDED_YEARS),
             "strengthDateRange": {"min": date_min, "max": date_max},
+            "validationDateRange": {"min": val_date_min, "max": val_date_max},
             "confidence": confidence,
             "confidenceLabel": {
                 "predictive": "Predictive model",

@@ -29,12 +29,6 @@ class TestModelTraining:
         _, meta = models_and_meta
         assert set(meta.keys()) == {"OPC", "SRC", "SBC"}
 
-    def test_sbc_model_is_predictive(self, models_and_meta):
-        # SBC historically reaches R2 > 0.5 (verified in production runs)
-        _, meta = models_and_meta
-        assert meta["SBC"]["confidence"] == "predictive"
-        assert meta["SBC"]["r2"] >= PREDICTIVE_R2
-
     def test_models_trained_with_min_samples(self, models_and_meta):
         models, meta = models_and_meta
         for t in ("OPC", "SRC", "SBC"):
@@ -42,11 +36,24 @@ class TestModelTraining:
             assert meta[t]["hasModel"] is True
             assert t in models
 
-    def test_metrics_within_reasonable_bounds(self, models_and_meta):
+    def test_metrics_finite(self, models_and_meta):
+        # Chronological validation can legitimately be negative (predicting
+        # the future is hard) — it must simply be finite and sane.
         _, meta = models_and_meta
         for t in ("OPC", "SRC", "SBC"):
-            assert 0.0 <= meta[t]["r2"] <= 1.0
+            assert -100.0 < meta[t]["r2"] <= 1.0
             assert 0.0 < meta[t]["rmse"] < 5.0  # MPa — sane strength error
+
+    def test_validation_is_chronological_suffix(self, models_and_meta):
+        # The validation window must be the most recent records: its start
+        # must be later than the start of the full strength date range.
+        _, meta = models_and_meta
+        for t in ("OPC", "SRC", "SBC"):
+            val = meta[t]["validationDateRange"]
+            full = meta[t]["strengthDateRange"]
+            assert val["min"] > full["min"]
+            assert val["max"] == full["max"]
+            assert val["min"] <= val["max"]
 
     def test_feature_importances_complete(self, models_and_meta):
         _, meta = models_and_meta

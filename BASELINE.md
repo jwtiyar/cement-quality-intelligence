@@ -23,6 +23,23 @@ Captured 2026-08-08 before the hardening implementation plan. Commands:
 | SRC  | 0.319 | 1.00      | 1,776     | exploratory |
 | SBC  | 0.810 | 0.97      | 1,549     | predictive  |
 
+### After Phase 6 (chronological 80/20 split — honest forward metrics)
+
+The random split leaked day-to-day strength autocorrelation into training
+(neighbor dates in both splits), inflating R². With the chronological split
+(train = earliest 80%, validate = most recent 20%) the forward metrics are:
+
+| Type | R²   | RMSE (MPa) | Train rows | Validation span           | Confidence   |
+|------|------|-----------|-----------|---------------------------|--------------|
+| OPC  | −3.45 | 1.09     | 1,773     | 2025-02-15 → 2026-05-18   | chemistry_only |
+| SRC  | −1.19 | 0.74     | 1,776     | 2025-02-23 → 2026-05-18   | chemistry_only |
+| SBC  | −14.81| 1.19     | 1,549     | 2025-04-08 → 2026-05-18   | chemistry_only |
+
+Strength means are near-stationary (2020: 47.5 → 2026: 46.0 OPC), so the
+drops reflect true predictive difficulty: future-month strength cannot be
+predicted from chemistry at the current sample density (~25 records/month),
+and the dashboard now labels all models honestly as "chemistry_only".
+
 ## Raw-mix solver (current behavior)
 
 - Feasible OPC targets LSF 95 / SM 2.4 / AM 1.5 →
