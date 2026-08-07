@@ -96,6 +96,12 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", "."), errors="coerce")
 
+    # LSF is stored as a ratio (0.91–1.00) in the Excel reports; the chemistry
+    # API and raw-mix solver report it as a percentage (91–100). Canonical unit
+    # is percentage everywhere — scale ratio values once at load time.
+    if "LSF" in df.columns:
+        df.loc[df["LSF"].notna() & (df["LSF"] < 2), "LSF"] *= 100.0
+
     df = df.dropna(subset=["Year", "Cement_Type"])
     df["Year"] = df["Year"].astype(int)
     df["Date_str"] = pd.to_datetime(df["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
