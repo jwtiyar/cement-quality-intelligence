@@ -22,6 +22,7 @@ from data_prep import CEMENT_TYPES, ML_EXCLUDED_YEARS, ml_training_frame
 ML_FEATURES = [
     "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
     "Strength_Early", "Early_Strength_Days", "Fineness",
+    "Strength_7D", "Residue_80",
 ]
 
 MIN_TRAIN_SAMPLES = 100
