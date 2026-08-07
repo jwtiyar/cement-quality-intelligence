@@ -8,3 +8,4 @@ openpyxl
 pypdf
 xlrd
 google-genai
+scipy

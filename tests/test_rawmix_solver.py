@@ -100,12 +100,24 @@ class TestSolveMode:
         result = calculate_rawmix(solve_payload(cement_type="OPC"))
         assert result["corrector_label"] == "Slag"
 
-    def test_impossible_target_detected(self):
-        # AM=0.1 with these materials is physically impossible → negative proportions
+    def test_feasible_solution_reported(self):
+        result = calculate_rawmix(solve_payload())
+        assert result["feasibility"] == "feasible"
+        assert result["solve_method"] == "exact"
+        for k in ("LSF", "SM", "AM"):
+            assert result["residuals"][k] == pytest.approx(0.0, abs=0.5)
+
+    def test_impossible_target_infeasible_not_negative(self):
+        # AM=0.1 with these materials is physically impossible → constrained
+        # fallback must return non-negative proportions + infeasible status.
         payload = solve_payload(targets={"LSF": 95.0, "SM": 2.4, "AM": 0.1})
         result = calculate_rawmix(payload)
-        assert any(v < 0 for v in result["dry_proportions"].values())
-        assert "NEGATIVE" in result["explanation"].upper() or "Impossible" in result["explanation"]
+        assert all(v >= 0 for v in result["dry_proportions"].values())
+        assert result["feasibility"] == "infeasible"
+        assert result["solve_method"] == "constrained"
+        assert abs(result["residuals"]["AM"]) > 0.05  # target missed, reported
+        assert "Not Simultaneously Reachable" in result["explanation"]
+        assert result["dry_proportions"]["Clay"] == 0.0  # bounded at 0, not negative
 
 
 class TestRecipeMode:
@@ -131,6 +143,28 @@ class TestRecipeMode:
         with pytest.raises(ValueError, match="~100"):
             calculate_rawmix(payload)
 
+    def test_recipe_rejects_negative_proportion(self):
+        payload = {
+            "mode": "recipe",
+            "cement_type": "OPC",
+            "materials": BASE_MATERIALS,
+            "hfo": HFO,
+            "recipe": {"limestone": 110, "shale": -10, "sand": 0, "pyrite": 0},
+        }
+        with pytest.raises(ValueError, match="non-negative"):
+            calculate_rawmix(payload)
+
+    def test_recipe_accepts_zero_proportion(self):
+        payload = {
+            "mode": "recipe",
+            "cement_type": "OPC",
+            "materials": BASE_MATERIALS,
+            "hfo": HFO,
+            "recipe": {"limestone": 0, "shale": 80, "sand": 10, "pyrite": 10},
+        }
+        result = calculate_rawmix(payload)
+        assert result["dry_proportions"]["Limestone"] == 0.0
+
     def test_recipe_evaluation_gives_advice(self):
         payload = {
             "mode": "recipe",
@@ -143,13 +177,56 @@ class TestRecipeMode:
         assert "Adjustment" in result["explanation"] or "typical ranges" in result["explanation"]
 
 
-class TestEdgeCases:
+class TestInputValidation:
     def test_missing_material_raises(self):
         payload = solve_payload()
         # Copy materials so the shared BASE_MATERIALS constant is NOT mutated
         payload["materials"] = {k: dict(v) for k, v in payload["materials"].items()}
         del payload["materials"]["sand"]
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="Missing materials"):
+            calculate_rawmix(payload)
+
+    def test_nan_oxide_rejected(self):
+        mats = {k: dict(v) for k, v in BASE_MATERIALS.items()}
+        mats["shale"]["SiO2"] = float("nan")
+        payload = solve_payload()
+        payload["materials"] = mats
+        with pytest.raises(ValueError, match="finite"):
+            calculate_rawmix(payload)
+
+    def test_infinite_oxide_rejected(self):
+        mats = {k: dict(v) for k, v in BASE_MATERIALS.items()}
+        mats["limestone"]["CaO"] = float("inf")
+        payload = solve_payload()
+        payload["materials"] = mats
+        with pytest.raises(ValueError, match="finite"):
+            calculate_rawmix(payload)
+
+    def test_loi_out_of_range_rejected(self):
+        mats = {k: dict(v) for k, v in BASE_MATERIALS.items()}
+        mats["sand"]["LOI"] = -5.0
+        payload = solve_payload()
+        payload["materials"] = mats
+        with pytest.raises(ValueError, match="LOI"):
+            calculate_rawmix(payload)
+
+    def test_zero_calorific_rejected(self):
+        payload = solve_payload()
+        payload["hfo"] = {"heat": 730, "calorific": 0, "sulfur": 2.5}
+        with pytest.raises(ValueError, match="calorific"):
+            calculate_rawmix(payload)
+
+    def test_negative_target_rejected(self):
+        payload = solve_payload(targets={"LSF": -5.0, "SM": 2.4, "AM": 1.5})
+        with pytest.raises(ValueError, match="positive"):
+            calculate_rawmix(payload)
+
+    def test_unknown_material_field_rejected(self):
+        mats = {k: dict(v) for k, v in BASE_MATERIALS.items()}
+        mats["shale"]["bogus"] = 1.0
+        payload = solve_payload()
+        payload["materials"] = mats
+        with pytest.raises(ValueError, match="invalid fields"):
             calculate_rawmix(payload)
 
     def test_zero_fe2o3_materials_safe(self):
