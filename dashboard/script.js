@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             let msg = `The system automatically scanned all Excel sheets during startup and found <strong>${dashboardData.anomalies.length}</strong> suspiciously large or small numbers (likely typos):<br><br><ul style="margin: 0; padding-left: 1.5rem;">`;
             const samples = dashboardData.anomalies.slice(0, 5);
             samples.forEach(a => {
-                msg += `<li style="margin-bottom: 0.3rem;"><strong>${a.Date} (${a.Type}):</strong> ${a.Parameter} is logged as <strong>${a.Value}</strong> (Normal range is ${a.Expected})</li>`;
+                msg += `<li style="margin-bottom: 0.3rem;"><strong>${escapeHtml(a.Date)} (${escapeHtml(a.Type)}):</strong> ${escapeHtml(a.Parameter)} is logged as <strong>${escapeHtml(a.Value)}</strong> (Normal range is ${escapeHtml(a.Expected)})</li>`;
             });
             msg += `</ul>`;
             if (dashboardData.anomalies.length > 5) {
@@ -693,10 +693,10 @@ function populateLowStrengthDays() {
         const color = strVal < 35 ? '#ef4444' : '#f59e0b';
         
         tr.innerHTML = `
-            <td>${a.Date}</td>
-            <td><span style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">${a.Type}</span></td>
-            <td style="color: ${color}; font-weight: 700;">${strVal}</td>
-            <td>${a.C3S}</td>
+            <td>${escapeHtml(a.Date)}</td>
+            <td><span style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">${escapeHtml(a.Type)}</span></td>
+            <td style="color: ${color}; font-weight: 700;">${escapeHtml(strVal)}</td>
+            <td>${escapeHtml(a.C3S)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1402,6 +1402,16 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Escape untrusted text before any innerHTML use (CSV values, AI output)
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
     // Append a message bubble to chat
     function appendMessage(role, text) {
         const bubble = document.createElement("div");
@@ -1411,8 +1421,10 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             bubble.style = "align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);";
             
-            // Render markdown-like formatting (bold, newlines) safely
-            let formattedText = text
+            // Render markdown-like formatting (bold, newlines) safely:
+            // escape HTML first so AI-generated tags can never execute
+            const escaped = escapeHtml(text);
+            const formattedText = escaped
                 .replace(/\n/g, "<br>")
                 .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
             bubble.innerHTML = formattedText;
