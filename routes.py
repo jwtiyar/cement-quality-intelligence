@@ -217,17 +217,21 @@ def export_csv():
 
 
 # Helper to load .env in routes.py
-def load_env():
-    env_paths = [".env", "../.env"]
+def load_env(paths: list[str] | None = None) -> None:
+    env_paths = paths or [".env", "../.env"]
     for path in env_paths:
         if os.path.exists(path):
             with open(path, "r") as f:
                 for line in f:
                     line = line.strip()
-                    if line and "=" in line and not line.startswith("#"):
-                        key, val = line.split("=", 1)
-                        val = val.strip().strip("'").strip('"')
-                        os.environ[key.strip()] = val
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" not in line:
+                        continue
+                    key, val = line.split("=", 1)
+                    val = val.split(" #", 1)[0] if " #" in val else val
+                    val = val.strip().strip("'").strip('"')
+                    os.environ[key.strip()] = val
 
 load_env()
 
@@ -241,7 +245,11 @@ def get_rag_index():
             try:
                 import pickle
                 with open(index_path, 'rb') as f:
-                    rag_index = pickle.load(f)
+                    candidate = pickle.load(f)
+                if not isinstance(candidate, dict) or not {"chunks", "vectorizer", "tfidf_matrix"} <= set(candidate):
+                    print("RAG index has unexpected structure; ignoring")
+                else:
+                    rag_index = candidate
             except Exception as e:
                 print(f"Error loading RAG index: {e}")
     return rag_index
