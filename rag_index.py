@@ -91,8 +91,10 @@ def rebuild_index():
     }
     
     os.makedirs(os.path.dirname(INDEX_PATH), exist_ok=True)
-    with open(INDEX_PATH, 'wb') as f:
+    tmp_path = INDEX_PATH + ".tmp"
+    with open(tmp_path, 'wb') as f:
         pickle.dump(index, f)
+    os.replace(tmp_path, INDEX_PATH)
         
     print(f"Index successfully built and saved! Total chunks: {len(all_chunks)}")
 

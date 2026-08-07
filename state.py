@@ -178,8 +178,10 @@ def write_dataset_summary_to_file(df: pd.DataFrame) -> None:
     summary_path = os.path.join("knowledge_base", "latest_daily_results.txt")
     
     summary_text = get_live_dataset_summary(df)
-    with open(summary_path, "w", encoding="utf-8") as f:
+    tmp_path = summary_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(summary_text)
+    os.replace(tmp_path, summary_path)
 
 
 def reload_from_csv(csv_path: str | None = None) -> None:

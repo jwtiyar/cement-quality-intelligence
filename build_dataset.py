@@ -144,7 +144,11 @@ def extract_data():
             final_df = final_df[final_df[col].astype(str).str.strip() != '']
         
     out_path = os.path.join(base_dir, "ALL_CEMENT_DATA.csv")
-    final_df.to_csv(out_path, index=False)
+    # Atomic write: temp file + rename, so a crash mid-write can never leave
+    # a truncated CSV that the app or the ML pipeline would silently load.
+    tmp_path = out_path + ".tmp"
+    final_df.to_csv(tmp_path, index=False)
+    os.replace(tmp_path, out_path)
     print(f"Extraction complete! Saved to {out_path} with {len(final_df)} strict records.")
 
 if __name__ == '__main__':
