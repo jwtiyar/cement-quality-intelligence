@@ -1,5 +1,8 @@
 """API tests — Pydantic validation, route behavior, error mapping."""
 
+import os
+import re
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -149,8 +152,54 @@ class TestChatEndpoint:
         })
         assert resp.status_code == 422
 
+    @pytest.mark.skipif(
+        os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"),
+        reason="API key present — unconfigured-key path not testable",
+    )
+    def test_no_api_key_500(self, client):
+        resp = client.post("/api/chat", json={"message": "hello"})
+        assert resp.status_code == 500
+        assert "not configured" in resp.json()["detail"]
+
 
 class TestDataEndpoints:
+    def test_data_cache(self, client):
+        resp = client.get("/api/data")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dataset"]["csvLastModified"] is not None
+        assert "ml" in body
+        assert set(body["ml"]) == {"OPC", "SRC", "SBC"}
+
+    def test_record_found(self, client):
+        resp = client.get("/api/record", params={"date": "2026-05-17", "type": "OPC"})
+        assert resp.status_code == 200
+        body = resp.json()
+        if body["found"]:
+            assert "Strength_28D" in body["record"]
+
+    def test_record_not_found(self, client):
+        resp = client.get("/api/record", params={"date": "1900-01-01", "type": "OPC"})
+        assert resp.status_code == 200
+        assert resp.json() == {"found": False}
+
+    def test_record_bad_date_400(self, client):
+        resp = client.get("/api/record", params={"date": "not-a-date", "type": "OPC"})
+        assert resp.status_code == 400
+
+    def test_latest_date(self, client):
+        resp = client.get("/api/latest_date", params={"type": "OPC"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["found"] is True
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", body["date"])
+
+    def test_export_csv(self, client):
+        resp = client.get("/api/export/csv")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/csv")
+        assert "Date" in resp.text[:200]
+
     def test_monthly_valid(self, client):
         resp = client.get("/api/monthly", params={"year": 2026, "month": 1})
         assert resp.status_code == 200
