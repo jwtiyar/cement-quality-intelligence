@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from chemistry import BoguePhases, OxideAnalysis, calc_liquid_content, clinker_lsf_percent, rawmix_diagnostics
+from chemistry import (
+    OxideAnalysis,
+    calc_bogue,
+    calc_liquid_content,
+    clinker_lsf_percent,
+    rawmix_diagnostics,
+)
 
 
 @dataclass
@@ -165,12 +171,11 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     cl_sm = sio2 / (al2o3 + fe2o3) if (al2o3 + fe2o3) else 0.0
     cl_am = al2o3 / fe2o3 if fe2o3 else 0.0
 
-    c3s = 4.071 * (cao - 0.7 * cl_so3_total) - 7.600 * sio2 - 6.718 * al2o3 - 1.430 * fe2o3
-    c2s = 2.867 * sio2 - 0.7544 * c3s
-    c3a = 2.650 * al2o3 - 1.692 * fe2o3
-    c4af = 3.043 * fe2o3
-    phases = BoguePhases(C3S=c3s, C2S=c2s, C3A=c3a, C4AF=c4af)
-    ox_clinker = OxideAnalysis(MgO=mgo, Na2O=na2o, K2O=k2o)
+    ox_clinker = OxideAnalysis(
+        SiO2=sio2, Al2O3=al2o3, Fe2O3=fe2o3, CaO=cao, MgO=mgo,
+        Na2O=na2o, K2O=k2o, SO3=cl_so3_total,
+    )
+    phases = calc_bogue(ox_clinker)
     lc = calc_liquid_content(phases, ox_clinker)
 
     x_dry = [
@@ -186,7 +191,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     x_wet_norm = [(v / sum_wet) * 100.0 for v in x_wet]
 
     labels = ["Limestone", "Clay", "Sand", corrector_label]
-    diagnostics = rawmix_diagnostics(cement_type, cl_lsf, cl_sm, cl_am, c3a, lc)
+    diagnostics = rawmix_diagnostics(cement_type, cl_lsf, cl_sm, cl_am, phases.C3A, lc)
 
     # Generate Explanation
     explanation_parts = []
@@ -196,6 +201,21 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         diagnostics.insert(0, {
             "severity": "error", 
             "message": "Calculated raw mix requires physically impossible negative proportions."
+        })
+
+    negative_phases = [
+        n for n, v in (
+            ("C3S", phases.C3S), ("C2S", phases.C2S),
+            ("C3A", phases.C3A), ("C4AF", phases.C4AF),
+        ) if v < 0
+    ]
+    if negative_phases:
+        diagnostics.insert(0, {
+            "severity": "error",
+            "message": (
+                f"Clinker chemistry is physically impossible: negative Bogue phases "
+                f"({', '.join(negative_phases)}). Review target moduli and material chemistry."
+            ),
         })
 
 
@@ -284,10 +304,10 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             "AM": round(cl_am, 2),
         },
         "phases": {
-            "C3S": round(c3s, 1),
-            "C2S": round(c2s, 1),
-            "C3A": round(c3a, 1),
-            "C4AF": round(c4af, 1),
+            "C3S": round(phases.C3S, 1),
+            "C2S": round(phases.C2S, 1),
+            "C3A": round(phases.C3A, 1),
+            "C4AF": round(phases.C4AF, 1),
         },
         "liquid_content": round(lc, 1),
         "diagnostics": diagnostics,
