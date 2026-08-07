@@ -8,13 +8,19 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse as FastFileResponse
 
 from chemistry import OxideAnalysis, analyze_clinker, lsf_advice
 from data_prep import default_csv_path
 from ml_train import ML_FEATURES
 from rawmix_solver import calculate_rawmix
+from schemas import (
+    ChatRequest,
+    ChemistryAnalyzeRequest,
+    PredictRequest,
+    RawMixRequest,
+)
 import state
 
 router = APIRouter()
@@ -90,16 +96,17 @@ def get_monthly(year: int, month: int, param: str = "Strength_28D"):
 
 
 @router.post("/api/chemistry/analyze")
-async def chemistry_analyze(request: Request):
+def chemistry_analyze(body: ChemistryAnalyzeRequest):
     try:
-        body = await request.json()
         ox = OxideAnalysis(
-            SiO2=float(body.get("SiO2", 0)),
-            Al2O3=float(body.get("Al2O3", 0)),
-            Fe2O3=float(body.get("Fe2O3", 0)),
-            CaO=float(body.get("CaO", 0)),
-            MgO=float(body.get("MgO", 0)),
-            SO3=float(body.get("SO3", 0)),
+            SiO2=body.SiO2,
+            Al2O3=body.Al2O3,
+            Fe2O3=body.Fe2O3,
+            CaO=body.CaO,
+            MgO=body.MgO,
+            Na2O=body.Na2O,
+            K2O=body.K2O,
+            SO3=body.SO3,
         )
         result = analyze_clinker(ox)
         lsf_pct = result["moduli"]["LSF"]
@@ -112,10 +119,9 @@ async def chemistry_analyze(request: Request):
 
 
 @router.post("/api/predict")
-async def predict(request: Request):
+def predict(body: PredictRequest):
     try:
-        inputs = await request.json()
-        c_type = inputs.get("Cement_Type", "OPC")
+        c_type = body.Cement_Type
 
         if c_type not in state.xgb_models:
             ml_info = state.data_cache.get("ml", {}).get(c_type, {})
@@ -127,7 +133,9 @@ async def predict(request: Request):
         model = state.xgb_models[c_type]
         features_val = []
         for feat in ML_FEATURES:
-            val = inputs.get(feat, state.data_cache["ml"][c_type]["averages"][feat])
+            val = getattr(body, feat)
+            if val is None:
+                val = state.data_cache["ml"][c_type]["averages"][feat]
             features_val.append(float(val))
 
         pred_df = pd.DataFrame([features_val], columns=ML_FEATURES)
@@ -148,10 +156,9 @@ async def predict(request: Request):
 
 
 @router.post("/api/rawmix/calculate")
-async def rawmix_calculate(request: Request):
+def rawmix_calculate(body: RawMixRequest):
     try:
-        body = await request.json()
-        return calculate_rawmix(body)
+        return calculate_rawmix(body.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -240,11 +247,10 @@ def get_rag_index():
     return rag_index
 
 @router.post("/api/chat")
-async def chat(request: Request):
+async def chat(body: ChatRequest):
     try:
-        body = await request.json()
-        message = body.get("message", "").strip()
-        history = body.get("history", [])
+        message = body.message.strip()
+        history = body.history
 
         if not message:
             raise HTTPException(status_code=400, detail="Empty message")
@@ -322,11 +328,11 @@ async def chat(request: Request):
         
         formatted_history = []
         for turn in history:
-            role = "user" if turn.get("role") == "user" else "model"
+            role = "user" if turn.role == "user" else "model"
             formatted_history.append(
                 types.Content(
                     role=role,
-                    parts=[types.Part.from_text(text=turn.get("content", ""))]
+                    parts=[types.Part.from_text(text=turn.content)]
                 )
             )
             
