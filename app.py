@@ -1,32 +1,13 @@
-import subprocess
-import sys
+import os
+import uvicorn
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-import os
-import uvicorn
-
-
-def _ensure_deps() -> None:
-    req_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
-    if not os.path.exists(req_file):
-        return
-    print("[auto-install] Checking dependencies …")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-r", req_file, "--quiet"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        print(f"[auto-install] Failed:\n{result.stderr}", file=sys.stderr)
-    elif result.stdout:
-        print(f"[auto-install] {result.stdout.strip()}")
-
-
-_ensure_deps()
 
 from routes import router
 from state import reload_from_csv
+
 
 app = FastAPI(title="Cement Quality Intelligence")
 
