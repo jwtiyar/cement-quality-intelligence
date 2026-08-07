@@ -85,11 +85,10 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
         lsf_avg = sub["LSF"].mean()
         c3s_avg = sub["C3S"].mean()
 
-        lsf_disp = lsf_avg * 100 if (pd.notna(lsf_avg) and lsf_avg < 2) else lsf_avg
         lines.append(
             f"• [{ctype}] ({len(sub)} tests): 28D Strength Avg={s28_avg:.1f} MPa | "
             f"Early Strength Avg={se_avg:.1f} MPa | Blaine Avg={fin_avg:.0f} cm²/g | "
-            f"LSF Avg={lsf_disp:.1f}% | C3S Avg={c3s_avg:.1f}%"
+            f"LSF Avg={lsf_avg:.1f}% | C3S Avg={c3s_avg:.1f}%"
         )
 
     # Monthly Summary (All available months in recent 24 months)
@@ -111,9 +110,7 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
             se_str = f"Avg={se_vals.mean():.1f} MPa" if not se_vals.empty else "N/A"
             fin_str = f"Avg={fin_vals.mean():.0f} cm²/g" if not fin_vals.empty else "N/A"
             if not lsf_vals.empty:
-                m_lsf = lsf_vals.mean()
-                disp_lsf = m_lsf * 100 if m_lsf < 2 else m_lsf
-                lsf_str = f"LSF={disp_lsf:.1f}%"
+                lsf_str = f"LSF={lsf_vals.mean():.1f}%"
             else:
                 lsf_str = "N/A"
 
@@ -161,9 +158,8 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
         se = f"{se_raw:.1f} MPa" if pd.notna(se_raw) else "Pending Early Curing"
         
         fin = f"{row['Fineness']:.0f} cm²/g" if pd.notna(row.get("Fineness")) else "N/A"
-        lsf_raw = row.get("LSF", 0)
-        lsf_val = lsf_raw * 100 if (pd.notna(lsf_raw) and lsf_raw < 2) else lsf_raw
-        lsf_str = f"{lsf_val:.1f}%" if pd.notna(lsf_raw) else "N/A"
+        lsf_raw = row.get("LSF")
+        lsf_str = f"{lsf_raw:.1f}%" if pd.notna(lsf_raw) else "N/A"
         c3s = f"{row.get('C3S', 0):.1f}%" if pd.notna(row.get("C3S")) else "N/A"
         cao = f"{row.get('CaO', 0):.1f}%" if pd.notna(row.get("CaO")) else "N/A"
         so3 = f"{row.get('SO3', 0):.2f}%" if pd.notna(row.get("SO3")) else "N/A"

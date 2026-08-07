@@ -44,6 +44,13 @@ class TestDatasetShape:
             if col in df.columns:
                 assert pd.api.types.is_float_dtype(df[col]), f"{col} not float"
 
+    def test_lsf_normalized_to_percent(self, df):
+        # LSF is stored as a ratio in Excel (0.91-1.00) and must load as
+        # percentage (91-100) to match the chemistry API / raw-mix solver unit.
+        lsf = df["LSF"].dropna()
+        assert len(lsf) > 0
+        assert lsf.between(85, 110).mean() > 0.99
+
 
 class TestStrengthNormalization:
     def test_strength_28d_present(self, df):

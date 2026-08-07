@@ -315,7 +315,7 @@ function getParamUnit(param) {
         case 'C3S': return 'Tricalcium Silicate (C3S %)';
         case 'CaO': return 'Lime (CaO %)';
         case 'Fineness': return 'Fineness / Blaine (cm²/g)';
-        case 'LSF': return 'Lime Saturation Factor (LSF)';
+        case 'LSF': return 'Lime Saturation Factor (LSF %)';
         default: return '';
     }
 }
