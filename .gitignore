@@ -8,3 +8,7 @@ __pycache__/
 .env
 *.pkl
 knowledge_base/
+
+# Local tool artifacts
+.codegraph/
+graphify-out/
