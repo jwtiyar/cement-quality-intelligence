@@ -99,6 +99,18 @@ printf "Enter GEMINI_API_KEY (typing hidden): " && read -s val && echo && echo "
 - **"Typo Alert Banner shows up"**: The system found values in your Excel files that violate cement chemistry standards. Open the original Excel file for the mentioned date, correct the typo, and click "Sync Live Excel Data" on the dashboard to clear the alert.
 - **"Server failed to start"**: Ensure all your `Daily Report 202X.xlsx` files are correctly located in their respective `[Year]` folders relative to this directory.
 
+## Tests
+
+```bash
+cd cement_app
+./venv/bin/python -m pytest tests/ -v
+```
+
+59 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics),
+the raw-mix solver (solve/recipe modes, impossible-target detection, edge cases),
+dataset normalization (real CSV), and ML training sanity (metrics, confidence labels).
+Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
+
 ## Project Architecture
 
 - `app.py`: The main entry point that starts the Uvicorn web server.
@@ -106,6 +118,6 @@ printf "Enter GEMINI_API_KEY (typing hidden): " && read -s val && echo && echo "
 - `rag_index.py`: Local TF-IDF search index builder. Extracts text from PDFs and builds a search index saved to `knowledge_base/rag_index.pkl`.
 - `state.py`: Manages the in-memory data cache, generates the anomaly detection lists, and performs global state management.
 - `build_dataset.py`: Scans and parses messy historical Excel files into a clean pandas DataFrame (`ALL_CEMENT_DATA.csv`).
-- `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data.
+- `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data. Features include chemistry oxides, early strength (2/3-day), fineness, **7-day strength** and **80 µm sieve residue** — the two strongest predictors of 28-day strength (correlation +0.92 / −0.82).
 - `rawmix_solver.py`: Contains the linear algebra optimization logic for calculating material proportions based on moduli targets.
 - `dashboard/`: Contains the frontend HTML, CSS, and Vanilla JavaScript.
