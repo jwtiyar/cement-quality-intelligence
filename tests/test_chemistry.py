@@ -62,13 +62,11 @@ class TestBogue:
         assert phases.C3A == pytest.approx(6.5452, abs=1e-3)
         assert phases.C4AF == pytest.approx(11.8677, abs=1e-3)
 
-    def test_never_negative(self):
-        # Extreme chemistry must clamp to >= 0 (physical plausibility)
+    def test_extreme_chemistry_reported_not_clamped(self):
+        # Extreme chemistry must NOT be silently clamped to 0 — the raw negative
+        # value is the signal that the composition is physically impossible.
         phases = calc_bogue(OxideAnalysis(SiO2=40, Al2O3=10, Fe2O3=5, CaO=10))
-        assert phases.C3S >= 0
-        assert phases.C2S >= 0
-        assert phases.C3A >= 0
-        assert phases.C4AF >= 0
+        assert phases.C3S < 0
 
     def test_phase_sum_reasonable(self):
         # C3S+C2S+C3A+C4AF should be near 100 for a normal clinker
@@ -111,6 +109,16 @@ class TestAnalyzeClinker:
         assert "liquid_content" in result
         # rounded to 2 decimals; tolerance matches verify script (0.002 ratio)
         assert result["moduli"]["LSF"] == pytest.approx(97.97, abs=0.2)
+
+    def test_valid_chemistry_flags(self):
+        result = analyze_clinker(REF_OXIDE)
+        assert result["phases_valid"] is True
+        assert result["negative_phases"] == []
+
+    def test_invalid_chemistry_flagged(self):
+        result = analyze_clinker(OxideAnalysis(SiO2=40, Al2O3=10, Fe2O3=5, CaO=10))
+        assert result["phases_valid"] is False
+        assert result["negative_phases"]  # non-empty list of phase names
 
 
 class TestLsfAdvice:

@@ -47,15 +47,18 @@ def calc_moduli(ox: OxideAnalysis) -> Moduli:
 
 
 def calc_bogue(ox: OxideAnalysis) -> BoguePhases:
+    # FLS-verified formulas (single source of truth). Values are returned raw:
+    # a physically impossible composition yields negative phases instead of a
+    # silently clamped result — callers surface that via phases_valid.
     c3s = 4.071 * ox.CaO - 7.600 * ox.SiO2 - 6.718 * ox.Al2O3 - 1.430 * ox.Fe2O3 - 2.852 * ox.SO3
     c2s = 2.867 * ox.SiO2 - 0.7544 * c3s
     c3a = 2.650 * ox.Al2O3 - 1.692 * ox.Fe2O3
     c4af = 3.043 * ox.Fe2O3
     return BoguePhases(
-        C3S=max(0.0, c3s),
-        C2S=max(0.0, c2s),
-        C3A=max(0.0, c3a),
-        C4AF=max(0.0, c4af),
+        C3S=c3s,
+        C2S=c2s,
+        C3A=c3a,
+        C4AF=c4af,
     )
 
 
@@ -82,6 +85,12 @@ def analyze_clinker(ox: OxideAnalysis) -> dict[str, Any]:
     mod = calc_moduli(ox)
     phases = calc_bogue(ox)
     lc = calc_liquid_content(phases, ox)
+    negative_phases = [
+        n for n, v in (
+            ("C3S", phases.C3S), ("C2S", phases.C2S),
+            ("C3A", phases.C3A), ("C4AF", phases.C4AF),
+        ) if v < 0
+    ]
     return {
         "moduli": {
             "LSF": round(mod.LSF_percent, 2),
@@ -95,6 +104,8 @@ def analyze_clinker(ox: OxideAnalysis) -> dict[str, Any]:
             "C4AF": round(phases.C4AF, 2),
         },
         "liquid_content": round(lc, 2),
+        "phases_valid": not negative_phases,
+        "negative_phases": negative_phases,
     }
 
 
