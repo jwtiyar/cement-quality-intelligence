@@ -153,7 +153,7 @@ class TestChatEndpoint:
         assert resp.status_code == 422
 
     @pytest.mark.skipif(
-        os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"),
+        bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),
         reason="API key present — unconfigured-key path not testable",
     )
     def test_no_api_key_500(self, client):
