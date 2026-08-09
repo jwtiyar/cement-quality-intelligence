@@ -10,6 +10,38 @@ An intelligent, full-stack dashboard for cement plant quality control. This appl
 - **Automated Anomaly Detection:** Validates thousands of historical daily report records against strict ASTM C150 and EN 197-1 chemical/strength standards. Suspicious values (like typos in Excel sheets) trigger smart alerts in the dashboard UI indicating the date, cement type, and out-of-bounds parameter.
 - **Dynamic Excel Synchronization:** Extracts and cleans data from messy historical daily report Excel files dynamically. A single click in the UI syncs the latest data without needing server restarts. Writes are atomic (temp file + rename) so a crash mid-export can never leave a truncated CSV or index.
 
+## Public Repository and Local Files
+
+The repository contains the application code, tests, frontend, and chemistry
+logic. Plant data and reference material are intentionally kept local and are
+not included in the public repository.
+
+### Required for the dashboard
+
+- `ALL_CEMENT_DATA.csv` — the local consolidated plant dataset. It is ignored
+  by Git. Provide it yourself, or let `build_dataset.py` create it from the
+  year folders described below.
+- Either an existing `ALL_CEMENT_DATA.csv` or at least one supported Excel
+  daily report in a parent year folder. The server cannot start with no data.
+
+### Optional local files
+
+- `knowledge_base/` — local PDFs or text manuals for the RAG assistant. The
+  folder and generated `rag_index.pkl` are ignored by Git. The core dashboard,
+  chemistry analysis, raw-mix solver, and ML pipeline do not require manuals.
+- `.env` with `GEMINI_API_KEY` or `GOOGLE_API_KEY` — required only for Gemini
+  chat responses. It is not required for the offline dashboard and solver.
+- `rawmix/` reference files — local PDFs, spreadsheets, Word documents, and
+  helper files may be placed here for offline work, but they are ignored and
+  not redistributed. The public root-level `rawmix_solver.py` and dashboard
+  are sufficient for raw-mix calculations; the local reference files are not
+  required to run the solver.
+- `venv/` — created locally by the startup scripts and ignored by Git.
+
+`dashboard/data.json` is not included and is not used by the application. The
+dashboard receives its data from the live `/api/data` endpoint after the local
+CSV is loaded.
+
 ## Data Directory Structure & Excel Formatting
 
 For the application to find and read your daily report data, your files must be structured in specific year folders located **one level above** this app's directory. 
@@ -106,7 +138,7 @@ cd cement_app
 ./venv/bin/python -m pytest tests/ -v
 ```
 
-98 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
+99 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
 
 ## Smoke test (optional, requires Playwright)
 
