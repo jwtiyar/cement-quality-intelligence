@@ -6,6 +6,6 @@ scipy==1.18.0
 fastapi==0.139.0
 uvicorn==0.50.0
 openpyxl==3.1.5
-pypdf==6.14.2
+pypdf==6.15.0
 xlrd==2.0.2
 google-genai==2.10.0
