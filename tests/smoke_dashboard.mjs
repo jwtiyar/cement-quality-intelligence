@@ -77,8 +77,18 @@ try {
     { timeout: 30_000 },
   );
 
+  // Recipe mode ("Calculate from Recipe") — regression: mode "calc" must
+  // not 422 (frontend uses "calc", schema only accepted "recipe")
+  await page.click("#raw_mode_calc");
+  await page.click("#btnCalculateRawMix");
+  await page.waitForFunction(
+    () => document.getElementById("raw_result_dry").textContent.includes("Limestone") &&
+          document.getElementById("raw_result_wet").textContent.includes("(Y1)"),
+    { timeout: 30_000 },
+  );
+
   if (errors.length) throw new Error(errors.join("\n"));
-  console.log(`SMOKE-OK: page loaded, avgStrength=${avg.trim()}, raw-mix solved`);
+  console.log(`SMOKE-OK: page loaded, avgStrength=${avg.trim()}, solve + recipe modes OK`);
 } finally {
   if (browser) await browser.close().catch(() => {});
   server.kill();

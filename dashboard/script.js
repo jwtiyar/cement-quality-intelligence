@@ -20,6 +20,18 @@ function escapeHtml(s) {
         .replace(/'/g, "&#39;");
 }
 
+// FastAPI validation errors come back as detail: [{loc, msg, type}, ...] —
+// flatten them into human-readable text instead of "[object Object]"
+function formatApiError(detail) {
+    if (Array.isArray(detail)) {
+        return detail.map(e => {
+            const loc = (e.loc || []).filter(p => p !== "body").join(".");
+            return loc ? `${loc}: ${e.msg}` : e.msg;
+        }).join("; ");
+    }
+    return detail;
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     
@@ -1076,6 +1088,23 @@ async function calculateRawMixProportions() {
         };
     }
 
+    const extraFields = rawMixMode === 'solve'
+        ? { LSF: 'raw_target_LSF', SM: 'raw_target_SM', AM: 'raw_target_AM' }
+        : { limestone: 'raw_recipe_ls', shale: 'raw_recipe_sh', sand: 'raw_recipe_sd', pyrite: 'raw_recipe_py' };
+
+    for (const [name, id] of Object.entries({
+        'hfo heat': 'raw_hfo_heat',
+        'hfo calorific': 'raw_hfo_cal',
+        'hfo sulfur': 'raw_hfo_sulfur',
+        ...extraFields,
+    })) {
+        const val = parseFloat(document.getElementById(id).value);
+        if (isNaN(val)) {
+            alert(`Please enter a valid numerical value for ${name}.`);
+            return;
+        }
+    }
+
     try {
         const res = await fetch('/api/rawmix/calculate', {
             method: 'POST',
@@ -1084,7 +1113,7 @@ async function calculateRawMixProportions() {
         });
         const data = await res.json();
         if (!res.ok) {
-            alert(data.detail || 'Calculation failed.');
+            alert(formatApiError(data.detail) || 'Calculation failed.');
             return;
         }
 

@@ -61,7 +61,8 @@ class HFO(BaseModel):
 
 
 class RawMixRequest(BaseModel):
-    mode: Literal["solve", "recipe"] = "solve"
+    # "calc" is the frontend's historical name for recipe mode
+    mode: Literal["solve", "recipe", "calc"] = "solve"
     cement_type: Literal["OPC", "SRC", "SBC"] = "OPC"
     materials: dict[str, MaterialChemistry]
     targets: Optional[RawMixTargets] = None
