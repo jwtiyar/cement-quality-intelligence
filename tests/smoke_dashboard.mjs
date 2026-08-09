@@ -66,6 +66,11 @@ try {
   const avg = await page.textContent("#avgStrength");
   if (!avg) throw new Error("avgStrength panel never populated");
 
+  await page.click("#tabBtnRawMix");
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector(".tab-page") || document.body).display !== "none",
+    { timeout: 10_000 },
+  ).catch(() => {});
   await page.click("#btnCalculateRawMix");
   await page.waitForFunction(
     () => document.getElementById("raw_result_dry").textContent.includes("Limestone"),

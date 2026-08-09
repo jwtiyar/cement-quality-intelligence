@@ -10,6 +10,16 @@ const CEMENT_COLORS = {
     SBC: { border: '#8b5cf6', bg: 'transparent' }
 };
 
+// Escape untrusted text before any innerHTML use (CSV values, AI output)
+function escapeHtml(s) {
+    return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     
@@ -1400,16 +1410,6 @@ document.addEventListener("DOMContentLoaded", () => {
             `;
             citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">No query run yet. Ask a question to see citations.</div>`;
         });
-    }
-
-    // Escape untrusted text before any innerHTML use (CSV values, AI output)
-    function escapeHtml(s) {
-        return String(s)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
     }
 
     // Append a message bubble to chat
