@@ -3,11 +3,21 @@ __pycache__/
 *.pyc
 *.csv
 *.xlsx
+*.xls
+*.xlsm
+*.pdf
+*.PDF
+*.doc
+*.docx
 *.log
 .DS_Store
 .env
 *.pkl
 knowledge_base/
+
+# Local rawmix references and helper files are not redistributed.
+rawmix/*
+!rawmix/README.md
 
 # Local tool artifacts
 .codegraph/
