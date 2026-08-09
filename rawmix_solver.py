@@ -189,6 +189,8 @@ def _solve_constrained(
 
 def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     mode = payload.get("mode", "solve")
+    if mode == "calc":
+        mode = "recipe"
     cement_type = payload.get("cement_type", "OPC")
     is_slag = cement_type in ("OPC", "SBC")
     corrector_label = "Slag" if is_slag else "Iron Ore"

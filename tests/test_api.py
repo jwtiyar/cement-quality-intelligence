@@ -79,6 +79,20 @@ class TestRawmixEndpoint:
         })
         assert resp.status_code == 422
 
+    def test_calc_mode_alias_accepted(self, client):
+        # The frontend has always sent mode="calc" for recipe mode
+        resp = client.post("/api/rawmix/calculate", json={
+            "mode": "calc",
+            "cement_type": "OPC",
+            "materials": BASE_MATERIALS,
+            "hfo": {"heat": 730, "calorific": 9800, "sulfur": 2.5},
+            "recipe": {"limestone": 78, "shale": 18, "sand": 2, "pyrite": 2},
+        })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["feasibility"] == "valid"
+        assert body["solve_method"] == "recipe"
+
     def test_missing_material_semantic_400(self, client):
         # All 4 materials are required; Pydantic can't know that, the solver
         # validates it and the route maps ValueError -> 400.
