@@ -186,11 +186,18 @@ class TestDataEndpoints:
         assert set(body["ml"]) == {"OPC", "SRC", "SBC"}
 
     def test_record_found(self, client):
-        resp = client.get("/api/record", params={"date": "2026-05-17", "type": "OPC"})
+        latest = client.get("/api/latest_date", params={"type": "OPC"})
+        assert latest.status_code == 200
+        assert latest.json()["found"] is True
+
+        resp = client.get(
+            "/api/record",
+            params={"date": latest.json()["date"], "type": "OPC"},
+        )
         assert resp.status_code == 200
         body = resp.json()
-        if body["found"]:
-            assert "Strength_28D" in body["record"]
+        assert body["found"] is True
+        assert "Strength_28D" in body["record"]
 
     def test_record_not_found(self, client):
         resp = client.get("/api/record", params={"date": "1900-01-01", "type": "OPC"})

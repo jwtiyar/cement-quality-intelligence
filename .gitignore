@@ -14,6 +14,7 @@ __pycache__/
 .env
 *.pkl
 knowledge_base/
+dashboard/data.json
 
 # Local rawmix references and helper files are not redistributed.
 rawmix/*

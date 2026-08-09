@@ -17,7 +17,8 @@ let playwright;
 try {
   playwright = require("playwright");
 } catch {
-  playwright = require("/home/jwty/node_modules/playwright");
+  console.error("Playwright is not installed. Run: npm install --save-dev playwright");
+  process.exit(1);
 }
 
 const PORT = 8517;

@@ -111,8 +111,8 @@ cd cement_app
 ## Smoke test (optional, requires Playwright)
 
 ```bash
-# one-time setup (needs ~110 MB free on /home, or set TMPDIR to a writable dir):
-TMPDIR=/home/jwty/.cache/playwright-tmp npx playwright install firefox
+# one-time setup (needs ~110 MB free in the temporary directory):
+TMPDIR="${TMPDIR:-/tmp}/cement-app-playwright" npx playwright install firefox
 node tests/smoke_dashboard.mjs
 ```
 
