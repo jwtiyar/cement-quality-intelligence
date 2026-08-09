@@ -18,11 +18,21 @@ not included in the public repository.
 
 ### Required for the dashboard
 
-- `ALL_CEMENT_DATA.csv` — the local consolidated plant dataset. It is ignored
-  by Git. Provide it yourself, or let `build_dataset.py` create it from the
-  year folders described below.
-- Either an existing `ALL_CEMENT_DATA.csv` or at least one supported Excel
-  daily report in a parent year folder. The server cannot start with no data.
+The server **cannot start** without data. On a fresh clone you must supply one
+of the following before running the startup script:
+
+- **`ALL_CEMENT_DATA.csv`** — a consolidated plant dataset. Place an existing
+  CSV with your plant data in the `cement_app/` directory. This file is ignored
+  by Git and is never included in the public repository.
+
+- **Excel daily reports in year folders** — place your Excel files one level
+  above this app, in folders named by year (described in the next section).
+  On first run the startup script automatically calls `build_dataset.py` to
+  create `ALL_CEMENT_DATA.csv` from those Excel files.
+
+If neither is present the banner prints "No records found!" and the Python
+server crashes with `FileNotFoundError` because no CSV was produced. Add your
+data source and run the script again.
 
 ### Optional local files
 
