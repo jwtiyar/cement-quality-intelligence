@@ -1267,7 +1267,7 @@ function setupRawMixCalculator() {
         });
 
         btnCalc.addEventListener('click', () => {
-            rawMixMode = 'calc';
+            rawMixMode = 'recipe';
             btnCalc.style.background = 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)';
             btnCalc.style.color = '#fff';
             btnCalc.style.border = 'none';
