@@ -1,7 +1,22 @@
 #!/bin/bash
 echo "Initializing AI Cement Dashboard..."
 cd "$(dirname "$0")"
-source venv/bin/activate
+
+if [ ! -d "venv" ]; then
+    echo "[INFO] Virtual environment 'venv' not found. Creating a new one..."
+    python3 -m venv venv
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Python 3 is not installed or not in PATH. Please install Python 3.10+ and try again."
+        exit 1
+    fi
+    echo "[INFO] Activating virtual environment..."
+    source venv/bin/activate
+    echo "[INFO] Installing required packages from requirements.txt..."
+    ./venv/bin/pip install -r requirements.txt --quiet
+else
+    echo "[INFO] Activating virtual environment..."
+    source venv/bin/activate
+fi
 
 echo "==========================================="
 echo "0. Verifying all dependencies..."
@@ -9,7 +24,7 @@ echo "==========================================="
 ./venv/bin/python _check_deps.py
 if [ $? -ne 0 ]; then
     echo "Missing packages detected. Installing..."
-    pip install -r requirements.txt --quiet
+    ./venv/bin/pip install -r requirements.txt --quiet
     ./venv/bin/python _check_deps.py
     if [ $? -ne 0 ]; then
         echo "[ERROR] Some packages failed to install."
