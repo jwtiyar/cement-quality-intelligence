@@ -1,11 +1,32 @@
 import os
 import pickle
 import hashlib
+import logging
 from pypdf import PdfReader
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 INDEX_PATH = "knowledge_base/rag_index.pkl"
 KNOWLEDGE_DIR = "knowledge_base"
+
+
+class _UnsupportedEncodingFilter(logging.Filter):
+    """Collect recoverable pypdf font-encoding messages per source file."""
+
+    def __init__(self):
+        super().__init__()
+        self.messages: set[str] = set()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if record.name == "pypdf._cmap" and message.startswith("Advanced encoding "):
+            self.messages.add(message)
+            return False
+        return True
+
+
+_UNSUPPORTED_ENCODING_FILTER = _UnsupportedEncodingFilter()
+logging.getLogger("pypdf._cmap").addFilter(_UNSUPPORTED_ENCODING_FILTER)
+
 
 def get_file_hash(filepath):
     hasher = hashlib.md5()
@@ -33,6 +54,7 @@ def chunk_text(text, source_name, page_num, chunk_size=800, overlap=150):
 
 def rebuild_index():
     print("Building local TF-IDF RAG index...")
+    encoding_filter = _UNSUPPORTED_ENCODING_FILTER
     
     # Scan for PDF and TXT files
     knowledge_files = []
@@ -48,6 +70,7 @@ def rebuild_index():
         filepath = os.path.join(KNOWLEDGE_DIR, f)
         file_hash = get_file_hash(filepath)
         print(f"Parsing {f}...")
+        encoding_filter.messages.clear()
         try:
             file_chunks = []
             if ext == '.pdf':
@@ -71,6 +94,11 @@ def rebuild_index():
                 print(f"  Successfully parsed {f} ({len(file_chunks)} chunks)")
             else:
                 print(f"  No text found in {f}.")
+            if encoding_filter.messages:
+                print(
+                    f"  Warning: pypdf skipped unsupported font encodings in {f}; "
+                    "some extracted text may be incomplete."
+                )
         except Exception as e:
             print(f"Error parsing {f}: {e}")
             
