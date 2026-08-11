@@ -102,6 +102,35 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     if "LSF" in df.columns:
         df.loc[df["LSF"].notna() & (df["LSF"] < 2), "LSF"] *= 100.0
 
+    # Compute LSF and C3S from oxides for rows where the Excel report omitted
+    # those columns or left them blank. Many older reports only stored the basic
+    # four oxides — the Bogue and LSF formulas give the same values the lab uses.
+    oxide_cols = ["CaO", "SiO2", "Al2O3", "Fe2O3"]
+    has_oxides = all(c in df.columns for c in oxide_cols)
+    if has_oxides:
+        so3 = df["SO3"].fillna(0) if "SO3" in df.columns else 0.0
+        cao = df["CaO"]
+        sio2 = df["SiO2"]
+        al2o3 = df["Al2O3"]
+        fe2o3 = df["Fe2O3"]
+
+        denom_lsf = 2.8 * sio2 + 1.18 * al2o3 + 0.65 * fe2o3
+        computed_lsf = 100.0 * (cao - 0.7 * so3) / denom_lsf.where(denom_lsf != 0, pd.NA)
+        if "LSF" not in df.columns:
+            df["LSF"] = computed_lsf
+        else:
+            df["LSF"] = df["LSF"].fillna(computed_lsf)
+
+        so3_c3s = df["SO3"].fillna(0) if "SO3" in df.columns else 0.0
+        computed_c3s = (
+            4.071 * cao - 7.600 * sio2 - 6.718 * al2o3
+            - 1.430 * fe2o3 - 2.852 * so3_c3s
+        )
+        if "C3S" not in df.columns:
+            df["C3S"] = computed_c3s
+        else:
+            df["C3S"] = df["C3S"].fillna(computed_c3s)
+
     df = df.dropna(subset=["Year", "Cement_Type"])
     df["Year"] = df["Year"].astype(int)
     df["Date_str"] = pd.to_datetime(df["Date"], errors="coerce").dt.strftime("%Y-%m-%d")

@@ -148,7 +148,7 @@ cd cement_app
 ./venv/bin/python -m pytest tests/ -v
 ```
 
-99 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
+100 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV and derived chemistry fallbacks), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
 
 ## Smoke test (optional, requires Playwright)
 

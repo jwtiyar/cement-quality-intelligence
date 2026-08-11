@@ -51,6 +51,26 @@ class TestDatasetShape:
         assert len(lsf) > 0
         assert lsf.between(85, 110).mean() > 0.99
 
+    def test_derives_missing_lsf_and_c3s_from_oxides(self, tmp_path):
+        source = tmp_path / "minimal.csv"
+        pd.DataFrame([{
+            "Year": 2024,
+            "Cement_Type": "OPC",
+            "Date": "2024-01-01",
+            "CaO": 65.0,
+            "SiO2": 21.0,
+            "Al2O3": 5.0,
+            "Fe2O3": 3.0,
+            "SO3": 2.0,
+        }]).to_csv(source, index=False)
+
+        prepared = load_and_prepare(str(source))
+        expected_lsf = 100 * (65 - 0.7 * 2) / (2.8 * 21 + 1.18 * 5 + 0.65 * 3)
+        expected_c3s = 4.071 * 65 - 7.6 * 21 - 6.718 * 5 - 1.43 * 3 - 2.852 * 2
+
+        assert prepared.loc[0, "LSF"] == pytest.approx(expected_lsf)
+        assert prepared.loc[0, "C3S"] == pytest.approx(expected_c3s)
+
 
 class TestStrengthNormalization:
     def test_strength_28d_present(self, df):
