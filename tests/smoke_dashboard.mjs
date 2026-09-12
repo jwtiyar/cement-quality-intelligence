@@ -6,7 +6,8 @@
  * the raw-mix solver, and fails on any uncaught page error or console error.
  *
  * Requires: node + the `playwright` npm package (system-wide is fine) and a
- * downloaded browser: `npx playwright install firefox`. Not part of the
+ * downloaded browser: `npx playwright install chromium`, or set
+ * `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to a system Chromium binary. Not part of the
  * pytest suite — run manually: `node tests/smoke_dashboard.mjs`.
  */
 import { spawn } from "node:child_process";
@@ -46,12 +47,14 @@ let browser;
 try {
   await waitForApi(`${BASE}/api/data`, 180_000);
 
-  browser = await playwright.firefox.launch();
+  browser = await playwright.chromium.launch({
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
+  });
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
-    if (m.type() === "error" && !m.text().includes("favicon")) {
+    if (m.type() === "error" && !m.text().includes("favicon") && !m.location().url.endsWith("/favicon.ico")) {
       errors.push(`console.error: ${m.text()}`);
     }
   });

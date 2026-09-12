@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 
+import build_dataset
 from data_prep import (
     CEMENT_TYPES,
     ML_EXCLUDED_YEARS,
@@ -70,6 +71,24 @@ class TestDatasetShape:
 
         assert prepared.loc[0, "LSF"] == pytest.approx(expected_lsf)
         assert prepared.loc[0, "C3S"] == pytest.approx(expected_c3s)
+
+
+def test_failed_refresh_preserves_existing_csv(tmp_path, monkeypatch):
+    app_dir = tmp_path / "cement_app"
+    app_dir.mkdir()
+    csv_path = app_dir / "ALL_CEMENT_DATA.csv"
+    csv_path.write_text("preserved\nrecord\n", encoding="utf-8")
+    year_dir = tmp_path / "2024"
+    year_dir.mkdir()
+    (year_dir / "report.xlsx").touch()
+
+    monkeypatch.setattr(build_dataset, "__file__", str(app_dir / "build_dataset.py"))
+    monkeypatch.setattr(build_dataset.pd, "ExcelFile", lambda _: (_ for _ in ()).throw(ValueError("broken workbook")))
+
+    with pytest.raises(RuntimeError, match="existing CSV was preserved"):
+        build_dataset.extract_data()
+
+    assert csv_path.read_text(encoding="utf-8") == "preserved\nrecord\n"
 
 
 class TestStrengthNormalization:

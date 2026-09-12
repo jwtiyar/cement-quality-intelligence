@@ -15,14 +15,11 @@ except ImportError:  # sklearn < 1.4
     def _rmse_fn(y_true, y_pred):
         return float(_mse_fn(y_true, y_pred) ** 0.5)
 
-from sklearn.model_selection import GridSearchCV, KFold
-
 from data_prep import CEMENT_TYPES, ML_EXCLUDED_YEARS, ml_training_frame
 
 ML_FEATURES = [
     "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
     "Strength_Early", "Early_Strength_Days", "Fineness",
-    "Strength_7D", "Residue_80",
 ]
 
 MIN_TRAIN_SAMPLES = 100
@@ -56,7 +53,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             else {feat: 0.0 for feat in ML_FEATURES}
         )
 
-        date_min = date_max = None
+        date_min = date_max = val_date_min = val_date_max = None
         if not df_ml.empty and "Date_str" in df_ml.columns:
             valid_dates = df_ml["Date_str"].dropna()
             if not valid_dates.empty:
@@ -77,28 +74,16 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             val_date_min = str(df_ml["Date_str"].iloc[split_idx])
             val_date_max = str(df_ml["Date_str"].iloc[-1])
 
-            # K-Fold Cross Validation within the training set for hyperparameter tuning
-            kf = KFold(n_splits=3, shuffle=True, random_state=42)
-            
-            param_grid = {
-                "n_estimators": [100, 150, 200],
-                "learning_rate": [0.05, 0.1],
-                "max_depth": [3, 4, 5],
-                "subsample": [0.8],
-                "colsample_bytree": [0.8],
-            }
-            
-            base_model = xgb.XGBRegressor(random_state=42)
-            grid_search = GridSearchCV(
-                estimator=base_model,
-                param_grid=param_grid,
-                cv=kf,
-                scoring="neg_root_mean_squared_error",
-                n_jobs=-1,
+            model = xgb.XGBRegressor(
+                n_estimators=150,
+                learning_rate=0.05,
+                max_depth=3,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=42,
+                n_jobs=1,
             )
-            grid_search.fit(X_train, y_train)
-            
-            model = grid_search.best_estimator_
+            model.fit(X_train, y_train)
 
             y_pred = model.predict(X_test)
             r2 = float(r2_score(y_test, y_pred))
@@ -109,7 +94,6 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 feat: float(imp) for feat, imp in zip(ML_FEATURES, model.feature_importances_)
             }
             print(f"[{c_type}] Model trained! R2: {r2:.3f}, RMSE: {rmse:.2f} MPa, samples: {len(df_ml)}")
-            print(f"[{c_type}] Best params: {grid_search.best_params_}")
         else:
             print(f"[{c_type}] Not enough 28-day records to train ({len(df_ml)} rows).")
 

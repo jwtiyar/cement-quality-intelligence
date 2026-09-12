@@ -131,6 +131,8 @@ class TestLsfAdvice:
     def test_high(self):
         msg = lsf_advice(99.0)
         assert "Do NOT increase CaO" in msg
+        assert "increase SiO2" in msg
+        assert "Lower SiO2" not in msg
 
 
 class TestRawmixDiagnostics:

@@ -122,7 +122,7 @@ def lsf_advice(lsf_percent: float) -> str:
         )
     return (
         f"Lime Saturation Factor is high ({lsf_percent:.1f}%). "
-        "Do NOT increase CaO — risk of free lime and expansion. Lower SiO2 or grind finer."
+        "Do NOT increase CaO — risk of free lime and expansion. Reduce CaO or increase SiO2."
     )
 
 

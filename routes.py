@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse as FastFileResponse
+from fastapi.responses import Response
 
 from chemistry import OxideAnalysis, analyze_clinker, lsf_advice
 from data_prep import default_csv_path
@@ -27,12 +27,12 @@ router = APIRouter()
 
 
 @router.get("/api/data")
-def get_data():
+async def get_data():
     return state.data_cache
 
 
 @router.get("/api/record")
-def get_record(date: str, type: str = "OPC"):
+async def get_record(date: str, type: str = "OPC"):
     if state.df_global is None:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
     try:
@@ -56,7 +56,7 @@ def get_record(date: str, type: str = "OPC"):
 
 
 @router.get("/api/latest_date")
-def get_latest_date(type: str = "OPC"):
+async def get_latest_date(type: str = "OPC"):
     if state.df_global is None:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
     try:
@@ -70,7 +70,7 @@ def get_latest_date(type: str = "OPC"):
 
 
 @router.get("/api/monthly")
-def get_monthly(year: int, month: int, param: str = "Strength_28D"):
+async def get_monthly(year: int, month: int, param: str = "Strength_28D"):
     if state.df_global is None:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
     try:
@@ -96,7 +96,7 @@ def get_monthly(year: int, month: int, param: str = "Strength_28D"):
 
 
 @router.post("/api/chemistry/analyze")
-def chemistry_analyze(body: ChemistryAnalyzeRequest):
+async def chemistry_analyze(body: ChemistryAnalyzeRequest):
     try:
         ox = OxideAnalysis(
             SiO2=body.SiO2,
@@ -119,7 +119,7 @@ def chemistry_analyze(body: ChemistryAnalyzeRequest):
 
 
 @router.post("/api/predict")
-def predict(body: PredictRequest):
+async def predict(body: PredictRequest):
     try:
         c_type = body.Cement_Type
 
@@ -156,7 +156,7 @@ def predict(body: PredictRequest):
 
 
 @router.post("/api/rawmix/calculate")
-def rawmix_calculate(body: RawMixRequest):
+async def rawmix_calculate(body: RawMixRequest):
     try:
         return calculate_rawmix(body.model_dump())
     except ValueError as e:
@@ -166,7 +166,7 @@ def rawmix_calculate(body: RawMixRequest):
 
 
 @router.post("/api/refresh")
-def refresh_data():
+async def refresh_data():
     """Re-scan Excel workbooks, rebuild CSV, retrain models in memory."""
     try:
         from build_dataset import extract_data
@@ -203,15 +203,15 @@ def refresh_data():
 
 
 @router.get("/api/export/csv")
-def export_csv():
+async def export_csv():
     """Download the consolidated cement dataset as CSV."""
     csv_path = default_csv_path()
     if not os.path.exists(csv_path):
         raise HTTPException(status_code=404, detail="CSV dataset not found")
-    return FastFileResponse(
-        csv_path,
+    with open(csv_path, "rb") as csv_file:
+        return Response(
+            content=csv_file.read(),
         media_type="text/csv",
-        filename="ALL_CEMENT_DATA.csv",
         headers={"Content-Disposition": "attachment; filename=ALL_CEMENT_DATA.csv"},
     )
 
@@ -369,7 +369,7 @@ async def chat(body: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/rag/rebuild")
-def rebuild_rag_index():
+async def rebuild_rag_index():
     try:
         global rag_index
         # Force reload from disk next time get_rag_index() is called

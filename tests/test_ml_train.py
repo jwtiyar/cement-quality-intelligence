@@ -1,10 +1,10 @@
 """Tests for ml_train.py — XGBoost strength model training (fast mode).
 
-NOTE: These run the REAL training pipeline but with a reduced grid so the
-suite stays quick (<60s). Full GridSearchCV coverage happens in production
-startup; here we verify the plumbing and honesty of the metrics.
+NOTE: These run the real training pipeline. The model uses one conservative,
+fixed configuration so a routine data refresh stays fast and reproducible.
 """
 
+import pandas as pd
 import pytest
 
 from data_prep import load_and_prepare
@@ -70,6 +70,13 @@ class TestModelTraining:
             conf = meta[t]["confidence"]
             assert conf in ("predictive", "exploratory", "chemistry_only")
             assert meta[t]["confidenceLabel"]  # non-empty label
+
+    def test_sparse_data_reports_no_validation_window(self):
+        row = {feature: 1.0 for feature in ML_FEATURES}
+        row.update(Cement_Type="OPC", Year=2026, Strength_28D=45.0, Date_str="2026-01-01")
+        _, meta = train_all_models(pd.DataFrame([row]))
+        assert meta["OPC"]["hasModel"] is False
+        assert meta["OPC"]["validationDateRange"] == {"min": None, "max": None}
 
 
 class TestConfidenceClassifier:

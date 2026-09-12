@@ -26,7 +26,7 @@ async def add_no_cache_header(request: Request, call_next):
 
 
 @app.get("/")
-def index():
+async def index():
     return FileResponse(os.path.join(DASHBOARD_DIR, "index.html"))
 
 
@@ -38,4 +38,4 @@ reload_from_csv()
 app.mount("/", StaticFiles(directory=DASHBOARD_DIR), name="dashboard")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8500)
+    uvicorn.run(app, host="127.0.0.1", port=8500)

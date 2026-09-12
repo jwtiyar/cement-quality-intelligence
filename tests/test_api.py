@@ -2,13 +2,35 @@
 
 import os
 import re
+import asyncio
 
+import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 import state
 from routes import router
+
+
+class ApiClient:
+    """Synchronous facade over HTTPX's supported ASGI transport."""
+
+    def __init__(self, app: FastAPI):
+        self.app = app
+
+    def request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        async def send() -> httpx.Response:
+            transport = httpx.ASGITransport(app=self.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                return await client.request(method, path, **kwargs)
+
+        return asyncio.run(send())
+
+    def get(self, path: str, **kwargs) -> httpx.Response:
+        return self.request("GET", path, **kwargs)
+
+    def post(self, path: str, **kwargs) -> httpx.Response:
+        return self.request("POST", path, **kwargs)
 
 
 @pytest.fixture(scope="module")
@@ -16,7 +38,7 @@ def client():
     app = FastAPI()
     app.include_router(router)
     state.reload_from_csv()
-    return TestClient(app)
+    return ApiClient(app)
 
 
 BASE_MATERIALS = {
@@ -144,6 +166,10 @@ class TestPredictEndpoint:
 
     def test_unknown_type_rejected_422(self, client):
         resp = client.post("/api/predict", json={"Cement_Type": "XYZ"})
+        assert resp.status_code == 422
+
+    def test_negative_prediction_feature_rejected_422(self, client):
+        resp = client.post("/api/predict", json={"CaO": -1})
         assert resp.status_code == 422
 
     def test_extra_fields_ignored(self, client):

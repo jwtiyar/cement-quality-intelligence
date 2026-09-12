@@ -78,6 +78,7 @@ def extract_data():
     cement_types = ['OPC', 'SRC', 'SBC']
     
     all_records = []
+    errors = []
     
     for year in years:
         year_dir = os.path.join(os.path.dirname(base_dir), str(year))
@@ -127,7 +128,13 @@ def extract_data():
                     all_records.extend(recs)
                     
         except Exception as e:
-            print(f"Error in {year}: {e}")
+            errors.append(f"{year}: {e}")
+
+    if errors:
+        raise RuntimeError(
+            "Dataset refresh aborted; existing CSV was preserved. "
+            f"Workbook errors: {'; '.join(errors)}"
+        )
 
     print("Merging extracted fragments...")
     if not all_records:

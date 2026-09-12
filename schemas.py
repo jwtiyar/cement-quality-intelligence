@@ -22,17 +22,15 @@ class PredictRequest(BaseModel):
     Cement_Type: Literal["OPC", "SRC", "SBC"] = "OPC"
     # All feature values optional — missing features fall back to the
     # training-average for that cement type, as the app already does.
-    SiO2: Optional[float] = None
-    Al2O3: Optional[float] = None
-    Fe2O3: Optional[float] = None
-    CaO: Optional[float] = None
-    MgO: Optional[float] = None
-    SO3: Optional[float] = None
-    Strength_Early: Optional[float] = None
-    Early_Strength_Days: Optional[float] = None
-    Fineness: Optional[float] = None
-    Strength_7D: Optional[float] = None
-    Residue_80: Optional[float] = None
+    SiO2: Optional[float] = Field(default=None, ge=0, le=100)
+    Al2O3: Optional[float] = Field(default=None, ge=0, le=100)
+    Fe2O3: Optional[float] = Field(default=None, ge=0, le=100)
+    CaO: Optional[float] = Field(default=None, ge=0, le=100)
+    MgO: Optional[float] = Field(default=None, ge=0, le=100)
+    SO3: Optional[float] = Field(default=None, ge=0, le=100)
+    Strength_Early: Optional[float] = Field(default=None, ge=0)
+    Early_Strength_Days: Optional[float] = Field(default=None, ge=0)
+    Fineness: Optional[float] = Field(default=None, ge=0)
 
 
 class MaterialChemistry(BaseModel):
