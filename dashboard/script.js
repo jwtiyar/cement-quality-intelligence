@@ -3,6 +3,7 @@ let monthlyChart = null;
 let distributionChart = null;
 let importanceChart = null;
 let dashboardData = null;
+let latestPredictionContext = null;
 
 const CEMENT_COLORS = {
     OPC: { border: '#38bdf8', bg: 'rgba(56, 189, 248, 0.08)' },
@@ -407,6 +408,7 @@ function setupMLPredictor() {
     // Function to clear optimizer inputs and reset outputs
     function clearOptimizerInputs() {
         lastLoadedRecordDate = null;
+        latestPredictionContext = null;
         document.getElementById('opt_CaO').value = '';
         document.getElementById('opt_SiO2').value = '';
         document.getElementById('opt_Al2O3').value = '';
@@ -644,6 +646,15 @@ function setupMLPredictor() {
                 const result = await res.json();
                 if (result.prediction !== undefined) {
                     const decision = result.typesafe || {};
+                    latestPredictionContext = {
+                        cement_type: cType,
+                        prediction: result.prediction,
+                        confidence: result.confidence,
+                        confidence_label: result.confidenceLabel,
+                        r2: result.r2,
+                        rmse: result.rmse,
+                        typesafe: decision
+                    };
                     if (decision.enabled && !decision.safe_to_show) {
                         strengthHtml = `<span style="font-size:0.95rem;color:#f59e0b;">Held for qualified review — TypeSafe confidence ${(decision.probability * 100).toFixed(0)}%</span>`;
                         advice += `<br><br><strong>TypeSafe review required before using this estimate.</strong>`;
@@ -651,6 +662,9 @@ function setupMLPredictor() {
                     } else {
                         strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
                         advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                        if (decision.enabled) {
+                            advice += `<br><strong>TypeSafe safe-to-show:</strong> ${(decision.probability * 100).toFixed(0)}%`;
+                        }
 
                         const dateBox = document.getElementById('expectedDateBox');
                         const dateLabel = dateBox.querySelector('.label');
@@ -689,6 +703,7 @@ function setupMLPredictor() {
                     }
                 }
             } else {
+                latestPredictionContext = null;
                 strengthHtml = `<span style="font-size:0.95rem;color:#94a3b8;">ML not used — ${modelMeta.confidenceLabel}</span>`;
                 document.getElementById('expectedDateBox').style.display = 'none';
             }
@@ -1176,6 +1191,10 @@ async function calculateRawMixProportions() {
                 ? labels.stop_and_review
                 : (labels[typesafe.action] || labels.stop_and_review);
             adviceContainer.innerHTML += `<p style="margin-top:0.7rem;"><strong>TypeSafe review:</strong> ${action} (${(typesafe.confidence * 100).toFixed(0)}% confidence).</p>`;
+            const probabilities = Object.entries(typesafe.probabilities || {})
+                .map(([name, value]) => `${labels[name] || name}: ${(value * 100).toFixed(0)}%`)
+                .join(' · ');
+            adviceContainer.innerHTML += `<p style="margin-top:0.35rem;color:#94a3b8;"><strong>Human-review probability:</strong> ${(typesafe.review_probability * 100).toFixed(0)}%${probabilities ? `<br>${probabilities}` : ''}</p>`;
         }
 
         if (resultsBlock) resultsBlock.style.display = 'block';
@@ -1502,7 +1521,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: query, history: history })
+                body: JSON.stringify({ message: query, history: history, prediction_context: latestPredictionContext })
             });
 
             // Remove typing indicator
@@ -1533,11 +1552,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 data.sources.forEach(src => {
                     const item = document.createElement("div");
                     item.style = "padding: 0.5rem; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 3px solid var(--accent); margin-bottom: 0.3rem;";
+                    const typeSafeScore = Number.isFinite(src.typesafeScore)
+                        ? `<span>TypeSafe: ${(src.typesafeScore * 100).toFixed(0)}%</span>`
+                        : '';
                     item.innerHTML = `
-                        <div style="font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${src.file}">${src.file}</div>
+                        <div style="font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(src.file)}">${escapeHtml(src.file)}</div>
                         <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-top:0.2rem; color:#94a3b8;">
-                            <span>Page ${src.page}</span>
-                            <span>Score: ${(src.score * 100).toFixed(0)}%</span>
+                            <span>Page ${escapeHtml(src.page)}</span>
+                            <span>TF-IDF: ${(src.score * 100).toFixed(0)}%</span>
+                            ${typeSafeScore}
                         </div>
                     `;
                     citedSources.appendChild(item);

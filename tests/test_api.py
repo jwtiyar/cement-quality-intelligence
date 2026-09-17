@@ -9,7 +9,8 @@ import pytest
 from fastapi import FastAPI
 
 import state
-from routes import router
+from routes import ml_reliability_context, router
+from schemas import PredictionContext
 
 
 class ApiClient:
@@ -193,6 +194,39 @@ class TestChatEndpoint:
             "history": [{"role": "admin", "content": "hello"}],
         })
         assert resp.status_code == 422
+
+    def test_invalid_typesafe_probability_rejected_422(self, client):
+        resp = client.post("/api/chat", json={
+            "message": "Can I use the latest estimate?",
+            "prediction_context": {
+                "cement_type": "OPC",
+                "prediction": 42.5,
+                "confidence": "exploratory",
+                "confidence_label": "Exploratory simulation",
+                "r2": 0.4,
+                "rmse": 3.2,
+                "typesafe": {"enabled": True, "safe_to_show": False, "probability": 1.2},
+            },
+        })
+        assert resp.status_code == 422
+
+    def test_held_prediction_is_explicit_in_gemini_context(self):
+        context = PredictionContext.model_validate({
+            "cement_type": "SRC",
+            "prediction": 38.5,
+            "confidence": "chemistry_only",
+            "confidence_label": "Chemistry guidance only — ML confidence low",
+            "r2": -0.2,
+            "rmse": 5.0,
+            "typesafe": {"enabled": True, "safe_to_show": False, "probability": 0.74},
+        })
+
+        prompt_context = ml_reliability_context(context)
+
+        assert "SRC 38.50 MPa" in prompt_context
+        assert "TypeSafe safe-to-show=False (74%)" in prompt_context
+        assert "HELD FOR QUALIFIED REVIEW" in prompt_context
+        assert "never present them as production recommendations" in prompt_context
 
     @pytest.mark.skipif(
         bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),

@@ -233,8 +233,9 @@ async def export_csv():
 
 # Helper to load .env in routes.py
 def load_env(paths: list[str] | None = None) -> None:
-    env_paths = paths or [".env", "../.env"]
+    env_paths = paths or ["~/.config/cement-app/.env", ".env", "../.env"]
     for path in env_paths:
+        path = os.path.expanduser(path)
         if os.path.exists(path):
             with open(path, "r") as f:
                 for line in f:
@@ -246,7 +247,7 @@ def load_env(paths: list[str] | None = None) -> None:
                     key, val = line.split("=", 1)
                     val = val.split(" #", 1)[0] if " #" in val else val
                     val = val.strip().strip("'").strip('"')
-                    os.environ[key.strip()] = val
+                    os.environ.setdefault(key.strip(), val)
 
 load_env()
 
@@ -268,6 +269,37 @@ def get_rag_index():
             except Exception as e:
                 print(f"Error loading RAG index: {e}")
     return rag_index
+
+
+def ml_reliability_context(prediction_context=None) -> str:
+    lines = []
+    for cement_type, meta in sorted(state.data_cache.get("ml", {}).items()):
+        lines.append(
+            f"{cement_type}: {meta.get('confidenceLabel', meta.get('confidence', 'unknown'))}; "
+            f"validation R² {meta.get('r2', 'n/a')}, RMSE {meta.get('rmse', 'n/a')} MPa."
+        )
+
+    if prediction_context is None:
+        lines.append("No optimizer prediction is attached to this chat request.")
+    else:
+        review = prediction_context.typesafe
+        review_text = "TypeSafe unavailable"
+        if review.enabled:
+            probability = f"{review.probability:.0%}" if review.probability is not None else "unknown probability"
+            review_text = f"TypeSafe safe-to-show={review.safe_to_show} ({probability})"
+        status = "HELD FOR QUALIFIED REVIEW" if review.enabled and not review.safe_to_show else "shown as decision support"
+        lines.append(
+            f"Latest optimizer result: {prediction_context.cement_type} {prediction_context.prediction:.2f} MPa; "
+            f"{prediction_context.confidence_label}; validation R² {prediction_context.r2}, "
+            f"RMSE {prediction_context.rmse} MPa; {review_text}; status: {status}."
+        )
+
+    lines.append(
+        "Treat chemistry_only and held results as unreliable strength predictions, and exploratory results as uncertain. "
+        "Explain their validation limits; "
+        "never present them as production recommendations. TypeSafe is advisory; deterministic chemistry and plant controls remain authoritative."
+    )
+    return "\n".join(lines)
 
 @router.post("/api/chat")
 async def chat(body: ChatRequest):
@@ -329,12 +361,14 @@ async def chat(body: ChatRequest):
                     "file": candidate["file"],
                     "page": candidate["page"],
                     "score": candidate["score"],
+                    **({"typesafeScore": candidate["typesafe_score"]} if "typesafe_score" in candidate else {}),
                 })
 
         # Format the system instruction
         context_str = "\n\n".join([f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}" for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))])
         
         live_summary = state.get_live_dataset_summary()
+        reliability_summary = ml_reliability_context(body.prediction_context)
 
         system_instruction = (
             "You are an expert Cement Quality & Plant Operations AI Assistant. Your purpose is to help the lab technician "
@@ -343,7 +377,10 @@ async def chat(body: ChatRequest):
             f"--- 1. LIVE PLANT LABORATORY DATA & RECENT RESULTS ---\n"
             f"{live_summary}\n"
             f"----------------------------------------------------\n\n"
-            f"--- 2. REFERENCE MANUALS & TECHNICAL STANDARDS (RAG CONTEXT) ---\n"
+            f"--- 2. ML RELIABILITY & LATEST OPTIMIZER REVIEW ---\n"
+            f"{reliability_summary}\n"
+            f"---------------------------------------------------\n\n"
+            f"--- 3. REFERENCE MANUALS & TECHNICAL STANDARDS (RAG CONTEXT) ---\n"
             f"{context_str if context_str else 'No relevant reference manual chunks retrieved.'}\n"
             f"-----------------------------------------------------------------\n\n"
             "GUIDELINES FOR ANSWERING:\n"

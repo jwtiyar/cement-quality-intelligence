@@ -73,6 +73,23 @@ class ChatTurn(BaseModel):
     content: str
 
 
+class TypeSafePredictionReview(BaseModel):
+    enabled: bool
+    safe_to_show: bool
+    probability: Optional[float] = Field(default=None, ge=0, le=1)
+
+
+class PredictionContext(BaseModel):
+    cement_type: Literal["OPC", "SRC", "SBC"]
+    prediction: float
+    confidence: Literal["predictive", "exploratory", "chemistry_only"]
+    confidence_label: str
+    r2: float
+    rmse: float = Field(ge=0)
+    typesafe: TypeSafePredictionReview
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     history: list[ChatTurn] = Field(default_factory=list)
+    prediction_context: Optional[PredictionContext] = None

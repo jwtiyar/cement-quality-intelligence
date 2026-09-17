@@ -28,7 +28,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const server = spawn(
   "./venv/bin/python",
   ["-m", "uvicorn", "app:app", "--port", String(PORT), "--log-level", "warning"],
-  { stdio: "ignore" },
+  { stdio: "ignore", env: { ...process.env, TYPESAFE_API_KEY: "" } },
 );
 
 async function waitForApi(url, timeoutMs) {
@@ -58,6 +58,19 @@ try {
       errors.push(`console.error: ${m.text()}`);
     }
   });
+  await page.route("**/api/rawmix/calculate", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.typesafe = {
+      enabled: true,
+      action: "adjust_recipe",
+      confidence: 0.91,
+      probabilities: { monitor: 0.04, adjust_recipe: 0.91, stop_and_review: 0.05 },
+      requires_human_review: true,
+      review_probability: 0.88,
+    };
+    await route.fulfill({ response, json });
+  });
 
   await page.goto(BASE, { waitUntil: "load" });
   await page.waitForSelector("#avgStrength", { timeout: 30_000 });
@@ -80,6 +93,10 @@ try {
     () => document.getElementById("raw_result_dry").textContent.includes("Limestone"),
     { timeout: 30_000 },
   );
+  const rawMixReview = await page.textContent("#raw_diagnostic_advice");
+  if (!rawMixReview.includes("Human-review probability: 88%") || !rawMixReview.includes("Adjust recipe or process targets: 91%")) {
+    throw new Error("Detailed TypeSafe raw-mix scores were not rendered");
+  }
 
   // Recipe mode ("Calculate from Recipe") — regression: mode "calc" must
   // not 422 (frontend uses "calc", schema only accepted "recipe")
@@ -91,8 +108,24 @@ try {
     { timeout: 30_000 },
   );
 
+  await page.route("**/api/chat", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      response: "Use the cited operating guidance.",
+      sources: [{ file: "kiln-guide.pdf", page: 12, score: 0.63, typesafeScore: 0.97 }],
+    }),
+  }));
+  await page.click("#tabBtnChat");
+  await page.fill("#chatInput", "What affects clinker strength?");
+  await page.click("#btnSendChat");
+  await page.waitForFunction(
+    () => document.getElementById("citedSources").textContent.includes("TypeSafe: 97%"),
+    { timeout: 10_000 },
+  );
+
   if (errors.length) throw new Error(errors.join("\n"));
-  console.log(`SMOKE-OK: page loaded, avgStrength=${avg.trim()}, solve + recipe modes OK`);
+  console.log(`SMOKE-OK: page loaded, avgStrength=${avg.trim()}, raw-mix scores + RAG scores rendered`);
 } finally {
   if (browser) await browser.close().catch(() => {});
   server.kill();

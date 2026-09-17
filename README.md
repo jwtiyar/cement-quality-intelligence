@@ -40,7 +40,7 @@ data source and run the script again.
 - `knowledge_base/` — local PDFs or text manuals for the RAG assistant. The
   folder and generated `rag_index.pkl` are ignored by Git. The core dashboard,
   chemistry analysis, raw-mix solver, and ML pipeline do not require manuals.
-- `.env` with `GEMINI_API_KEY` or `GOOGLE_API_KEY` — required only for Gemini
+- `~/.config/cement-app/.env` with `GEMINI_API_KEY` or `GOOGLE_API_KEY` — required only for Gemini
   chat responses. `TYPESAFE_API_KEY` is optional; when present it adds semantic
   review to raw-mix recommendations, RAG retrieval, and ML prediction display.
   Neither key is required for the offline dashboard and solver.
@@ -114,9 +114,9 @@ If you run this application and the year folders (`202X`) are missing from the p
     ```
 
 ### 3. Setup Gemini API Key
-To enable the AI chat feature, configure your API key in a `.env` file in the project folder:
+To enable the AI chat feature, configure your API key outside the project folder:
 ```bash
-printf "Enter GEMINI_API_KEY (typing hidden): " && read -s val && echo && echo "GEMINI_API_KEY=$val" >> ".env" && echo "Saved."
+mkdir -p ~/.config/cement-app && printf "Enter GEMINI_API_KEY (typing hidden): " && read -s val && echo && echo "GEMINI_API_KEY=$val" >> ~/.config/cement-app/.env && chmod 600 ~/.config/cement-app/.env && echo "Saved."
 ```
 
 ### 4. Index Knowledge Base Manuals
@@ -151,7 +151,7 @@ cd cement_app
 ./venv/bin/python -m pytest tests/ -v
 ```
 
-108 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV and derived chemistry fallbacks), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), optional TypeSafe decision contracts, and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
+110 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV and derived chemistry fallbacks), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), optional TypeSafe decision contracts, and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
 
 ## Smoke test (optional, requires Playwright)
 
