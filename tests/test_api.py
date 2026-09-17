@@ -195,6 +195,32 @@ class TestChatEndpoint:
         })
         assert resp.status_code == 422
 
+    def test_bad_provider_rejected_422(self, client):
+        resp = client.post("/api/chat", json={"message": "hi", "provider": "unknown"})
+        assert resp.status_code == 422
+
+    def test_codex_provider_uses_rag_prompt_without_gemini_key(self, client, monkeypatch):
+        captured = {}
+
+        async def fake_ask_codex(prompt):
+            captured["prompt"] = prompt
+            return "Codex document answer", "Codex test model"
+
+        monkeypatch.setattr("routes.ask_codex", fake_ask_codex)
+        resp = client.post("/api/chat", json={
+            "message": "What does the manual say about LSF?",
+            "provider": "codex",
+            "history": [{"role": "user", "content": "We are checking raw mix."}],
+        })
+
+        assert resp.status_code == 200
+        assert resp.json()["response"] == "Codex document answer"
+        assert resp.json()["provider"] == "codex"
+        assert resp.json()["model"] == "Codex test model"
+        assert "REFERENCE MANUALS & TECHNICAL STANDARDS" in captured["prompt"]
+        assert "We are checking raw mix." in captured["prompt"]
+        assert "What does the manual say about LSF?" in captured["prompt"]
+
     def test_invalid_typesafe_probability_rejected_422(self, client):
         resp = client.post("/api/chat", json={
             "message": "Can I use the latest estimate?",

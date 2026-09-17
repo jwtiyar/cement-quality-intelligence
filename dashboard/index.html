@@ -591,7 +591,14 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.8rem;">
                         <div>
                             <h2 style="margin: 0; font-size: 1.25rem;">💬 AI Process & Quality Assistant</h2>
-                            <span style="display: inline-block; margin-top: 0.35rem; color: #94a3b8; font-size: 0.78rem;">Powered by Gemini 3.8 Flash</span>
+                            <div style="display: flex; align-items: center; gap: 0.55rem; margin-top: 0.45rem; flex-wrap: wrap;">
+                                <label for="aiProvider" style="color: #94a3b8; font-size: 0.78rem;">AI provider</label>
+                                <select id="aiProvider" class="glass-select" style="min-height: 32px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background-color: #0f172a; color: #e2e8f0;">
+                                    <option value="gemini">Gemini 3.8 Flash</option>
+                                    <option value="codex">Codex — ChatGPT account</option>
+                                </select>
+                                <span id="activeModelLabel" style="color: #94a3b8; font-size: 0.78rem;">Active: Gemini 3.8 Flash</span>
+                            </div>
                         </div>
                         <button id="btnClearChat" class="btn-predict" style="width: auto; padding: 0.3rem 0.8rem; font-size: 0.85rem; margin: 0; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;">Clear Chat</button>
                     </div>
@@ -638,6 +645,6 @@
 
     </div>
 
-    <script src="script.js?v=8"></script>
+    <script src="script.js?v=9"></script>
 </body>
 </html>

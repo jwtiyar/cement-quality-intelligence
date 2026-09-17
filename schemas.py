@@ -93,3 +93,4 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     history: list[ChatTurn] = Field(default_factory=list)
     prediction_context: Optional[PredictionContext] = None
+    provider: Literal["gemini", "codex"] = "gemini"

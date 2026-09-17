@@ -1508,8 +1508,31 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnRebuildRAG = document.getElementById("btnRebuildRAG");
     const ragStatus = document.getElementById("ragStatus");
     const citedSources = document.getElementById("citedSources");
+    const aiProvider = document.getElementById("aiProvider");
+    const activeModelLabel = document.getElementById("activeModelLabel");
 
     let history = [];
+
+    const providerLabels = {
+        gemini: "Gemini 3.8 Flash",
+        codex: "gpt-5.6-luna (medium) — ChatGPT account",
+    };
+    const savedProvider = localStorage.getItem("cementAiProvider");
+    if (aiProvider && providerLabels[savedProvider]) aiProvider.value = savedProvider;
+
+    function updateProviderLabel(label) {
+        if (activeModelLabel) {
+            activeModelLabel.textContent = `Active: ${label || providerLabels[aiProvider?.value]}`;
+        }
+    }
+
+    updateProviderLabel();
+    if (aiProvider) {
+        aiProvider.addEventListener("change", () => {
+            localStorage.setItem("cementAiProvider", aiProvider.value);
+            updateProviderLabel();
+        });
+    }
 
     // Clear history
     if (btnClearChat) {
@@ -1554,6 +1577,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         chatInput.value = "";
         appendMessage("user", query);
+        const provider = aiProvider?.value || "gemini";
+        btnSendChat.disabled = true;
+        btnSendChat.textContent = "Send · Thinking…";
 
         // Show typing indicator
         const typingIndicator = document.createElement("div");
@@ -1567,7 +1593,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: query, history: history, prediction_context: latestPredictionContext })
+                body: JSON.stringify({
+                    message: query,
+                    history: history,
+                    prediction_context: latestPredictionContext,
+                    provider,
+                })
             });
 
             // Remove typing indicator
@@ -1576,12 +1607,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!res.ok) {
                 const errData = await res.json();
-                appendMessage("model", `<span style="color:#ef4444;">Error: ${errData.detail || 'Could not reach Gemini model'}</span>`);
+                appendMessage("model", `Error: ${errData.detail || `Could not reach ${providerLabels[provider]}`}`);
                 return;
             }
 
             const data = await res.json();
             appendMessage("model", data.response);
+            updateProviderLabel(data.model || providerLabels[provider]);
 
             // Update local history
             history.push({ role: "user", content: query });
@@ -1619,7 +1651,10 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error(err);
             const ind = document.getElementById("typingIndicator");
             if (ind) ind.remove();
-            appendMessage("model", `<span style="color:#ef4444;">Error connecting to server.</span>`);
+            appendMessage("model", "Error connecting to server.");
+        } finally {
+            btnSendChat.disabled = false;
+            btnSendChat.textContent = "Send";
         }
     }
 

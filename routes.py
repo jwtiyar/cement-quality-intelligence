@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from chemistry import OxideAnalysis, analyze_clinker, lsf_advice
+from codex_provider import ask_codex
 from data_prep import default_csv_path
 from ml_train import ML_FEATURES
 from rawmix_solver import calculate_rawmix
@@ -310,22 +311,6 @@ async def chat(body: ChatRequest):
         if not message:
             raise HTTPException(status_code=400, detail="Empty message")
 
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
-
-        try:
-            from google import genai
-            from google.genai import types
-        except ImportError:
-            raise HTTPException(
-                status_code=500,
-                detail="google-genai package is missing. The server tried to auto-install it on startup, "
-                       "but it may have failed. Run: pip install google-genai"
-            )
-
-        client = genai.Client(api_key=api_key)
-
         index = get_rag_index()
         retrieved_contexts = []
         sources = []
@@ -395,23 +380,47 @@ async def chat(body: ChatRequest):
             "3. Be clear, precise, professional, and highlight actionable quality insights for plant engineers."
         )
         
-        formatted_history = []
-        for turn in history:
-            role = "user" if turn.role == "user" else "model"
-            formatted_history.append(
-                types.Content(
-                    role=role,
-                    parts=[types.Part.from_text(text=turn.content)]
-                )
-            )
-            
-        chat_session = client.chats.create(
-            model="gemini-3.8-flash",
-            history=formatted_history
-        )
-        
         prompt = f"{system_instruction}\n\nUser Question: {message}"
-        response = chat_session.send_message(message=prompt)
+        if body.provider == "codex":
+            conversation = "\n".join(
+                f"{'User' if turn.role == 'user' else 'Assistant'}: {turn.content}"
+                for turn in history
+            )
+            codex_prompt = (
+                f"{system_instruction}\n\n"
+                f"--- RECENT CONVERSATION ---\n{conversation or 'No earlier messages.'}\n"
+                f"---------------------------\n\nUser Question: {message}"
+            )
+            response_text, active_model = await ask_codex(codex_prompt)
+        else:
+            api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            if not api_key:
+                raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
+
+            try:
+                from google import genai
+                from google.genai import types
+            except ImportError:
+                raise HTTPException(
+                    status_code=500,
+                    detail="google-genai package is missing. Run: pip install google-genai"
+                )
+
+            client = genai.Client(api_key=api_key)
+            formatted_history = [
+                types.Content(
+                    role="user" if turn.role == "user" else "model",
+                    parts=[types.Part.from_text(text=turn.content)],
+                )
+                for turn in history
+            ]
+            chat_session = client.chats.create(
+                model="gemini-3.8-flash",
+                history=formatted_history,
+            )
+            response = chat_session.send_message(message=prompt)
+            response_text = response.text
+            active_model = "gemini-3.8-flash"
         
         # Deduplicate sources
         unique_sources = []
@@ -423,8 +432,10 @@ async def chat(body: ChatRequest):
                 unique_sources.append(src)
                 
         return {
-            "response": response.text,
-            "sources": unique_sources
+            "response": response_text,
+            "sources": unique_sources,
+            "provider": body.provider,
+            "model": active_model,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
