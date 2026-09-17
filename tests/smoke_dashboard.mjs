@@ -61,6 +61,7 @@ try {
   await page.route("**/api/rawmix/calculate", async (route) => {
     const response = await route.fetch();
     const json = await response.json();
+    json.explanation += '<img src="x" onerror="window.__unsafeExplanationRan = true">';
     json.typesafe = {
       enabled: true,
       action: "adjust_recipe",
@@ -96,6 +97,9 @@ try {
   const rawMixReview = await page.textContent("#raw_diagnostic_advice");
   if (!rawMixReview.includes("Human-review probability: 88%") || !rawMixReview.includes("Adjust recipe or process targets: 91%")) {
     throw new Error("Detailed TypeSafe raw-mix scores were not rendered");
+  }
+  if (await page.locator("#rawmix_prompt_block img").count() || await page.evaluate(() => window.__unsafeExplanationRan === true)) {
+    throw new Error("Unsafe raw-mix explanation HTML was rendered");
   }
 
   // Recipe mode ("Calculate from Recipe") — regression: mode "calc" must

@@ -21,6 +21,37 @@ function escapeHtml(s) {
         .replace(/'/g, "&#39;");
 }
 
+function appendStatus(container, label, text, style = '') {
+    const paragraph = document.createElement('p');
+    paragraph.style = style;
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    paragraph.append(strong, document.createTextNode(` ${text}`));
+    container.appendChild(paragraph);
+}
+
+function setSafeRichText(container, html) {
+    const source = new DOMParser().parseFromString(String(html), 'text/html');
+    const allowedTags = new Set(['STRONG', 'UL', 'LI', 'BR', 'I']);
+    const fragment = document.createDocumentFragment();
+
+    function copySafeNodes(sourceNode, targetNode) {
+        sourceNode.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                targetNode.appendChild(document.createTextNode(node.textContent));
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const nextTarget = allowedTags.has(node.tagName)
+                    ? targetNode.appendChild(document.createElement(node.tagName.toLowerCase()))
+                    : targetNode;
+                copySafeNodes(node, nextTarget);
+            }
+        });
+    }
+
+    copySafeNodes(source.body, fragment);
+    container.replaceChildren(fragment);
+}
+
 // FastAPI validation errors come back as detail: [{loc, msg, type}, ...] —
 // flatten them into human-readable text instead of "[object Object]"
 function formatApiError(detail) {
@@ -485,6 +516,7 @@ function setupMLPredictor() {
 
         try {
             const res = await fetch(`/api/record?date=${dateVal}&type=${cType}`);
+            if (!res.ok) throw new Error(`Record lookup failed (${res.status})`);
             const resData = await res.json();
 
             if (resData.found) {
@@ -523,6 +555,7 @@ function setupMLPredictor() {
         
         try {
             const res = await fetch(`/api/latest_date?type=${cType}`);
+            if (!res.ok) throw new Error(`Latest-date lookup failed (${res.status})`);
             const data = await res.json();
             if (data.found && data.date) {
                 searchDateInput.value = data.date;
@@ -617,6 +650,7 @@ function setupMLPredictor() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ SiO2, Al2O3, Fe2O3, CaO, MgO, SO3 })
             });
+            if (!chemRes.ok) throw new Error(`Chemistry analysis failed (${chemRes.status})`);
             const chem = await chemRes.json();
 
             document.getElementById('opt_res_C3S').innerText = chem.phases.C3S.toFixed(2);
@@ -643,6 +677,7 @@ function setupMLPredictor() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(reqData)
                 });
+                if (!res.ok) throw new Error(`Strength prediction failed (${res.status})`);
                 const result = await res.json();
                 if (result.prediction !== undefined) {
                     const decision = result.typesafe || {};
@@ -1168,16 +1203,22 @@ async function calculateRawMixProportions() {
 
         const adviceContainer = document.getElementById('raw_diagnostic_advice');
         const diags = data.diagnostics || [];
+        adviceContainer.replaceChildren();
 
         if (diags.length > 0) {
             const hasError = diags.some(d => d.severity === 'error');
             adviceContainer.style = hasError
                 ? 'margin-top: 1.2rem; padding: 1rem; background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;'
                 : 'margin-top: 1.2rem; padding: 1rem; background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;';
-            adviceContainer.innerHTML = diags.map(d => `<p style="margin-bottom:0.5rem;"><strong>${d.severity === 'error' ? '🚨' : '⚠️'}</strong> ${d.message}</p>`).join('');
+            diags.forEach(d => appendStatus(
+                adviceContainer,
+                d.severity === 'error' ? '🚨' : '⚠️',
+                d.message,
+                'margin-bottom:0.5rem;'
+            ));
         } else {
             adviceContainer.style = 'margin-top: 1.2rem; padding: 1rem; background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;';
-            adviceContainer.innerHTML = `<p><strong>✅ Optimal Sintering Design:</strong> Moduli targets satisfied (Liquid content: ${data.liquid_content}%, C₃A: ${ph.C3A}%).</p>`;
+            appendStatus(adviceContainer, '✅ Optimal Sintering Design:', `Moduli targets satisfied (Liquid content: ${data.liquid_content}%, C₃A: ${ph.C3A}%).`);
         }
 
         const typesafe = data.typesafe || {};
@@ -1190,11 +1231,16 @@ async function calculateRawMixProportions() {
             const action = typesafe.requires_human_review
                 ? labels.stop_and_review
                 : (labels[typesafe.action] || labels.stop_and_review);
-            adviceContainer.innerHTML += `<p style="margin-top:0.7rem;"><strong>TypeSafe review:</strong> ${action} (${(typesafe.confidence * 100).toFixed(0)}% confidence).</p>`;
+            appendStatus(adviceContainer, 'TypeSafe review:', `${action} (${(typesafe.confidence * 100).toFixed(0)}% confidence).`, 'margin-top:0.7rem;');
             const probabilities = Object.entries(typesafe.probabilities || {})
                 .map(([name, value]) => `${labels[name] || name}: ${(value * 100).toFixed(0)}%`)
                 .join(' · ');
-            adviceContainer.innerHTML += `<p style="margin-top:0.35rem;color:#94a3b8;"><strong>Human-review probability:</strong> ${(typesafe.review_probability * 100).toFixed(0)}%${probabilities ? `<br>${probabilities}` : ''}</p>`;
+            appendStatus(
+                adviceContainer,
+                'Human-review probability:',
+                `${(typesafe.review_probability * 100).toFixed(0)}%${probabilities ? `\n${probabilities}` : ''}`,
+                'margin-top:0.35rem;color:#94a3b8;white-space:pre-line;'
+            );
         }
 
         if (resultsBlock) resultsBlock.style.display = 'block';
@@ -1207,7 +1253,7 @@ async function calculateRawMixProportions() {
             promptBlock.style.borderRadius = '8px';
             promptBlock.style.textAlign = 'left';
             promptBlock.style.marginTop = '2rem';
-            promptBlock.innerHTML = data.explanation;
+            setSafeRichText(promptBlock, data.explanation);
         } else if (promptBlock) {
             promptBlock.style.display = 'none';
         }
