@@ -62,6 +62,7 @@ class TestRawmixEndpoint:
         body = resp.json()
         assert body["feasibility"] == "feasible"
         assert abs(body["clinker"]["LSF"] - 95.0) <= 0.5
+        assert body["typesafe"] == {"enabled": False}
 
     def test_invalid_target_type_rejected_422(self, client):
         resp = client.post("/api/rawmix/calculate", json={
@@ -163,6 +164,7 @@ class TestPredictEndpoint:
         body = resp.json()
         assert "prediction" in body
         assert "confidence" in body
+        assert body["typesafe"]["enabled"] is False
 
     def test_unknown_type_rejected_422(self, client):
         resp = client.post("/api/predict", json={"Cement_Type": "XYZ"})

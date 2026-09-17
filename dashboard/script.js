@@ -643,43 +643,50 @@ function setupMLPredictor() {
                 });
                 const result = await res.json();
                 if (result.prediction !== undefined) {
-                    strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
-                    advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
-                    
-                    const dateBox = document.getElementById('expectedDateBox');
-                    const dateLabel = dateBox.querySelector('.label');
-                    const dateVal = document.getElementById('expectedBreakDate');
-                    
-                    let baseDateObj = new Date();
-                    if (lastLoadedRecordDate) {
-                        const parts = lastLoadedRecordDate.split('-');
-                        if (parts.length === 3) {
-                            baseDateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-                        } else {
-                            baseDateObj = new Date(lastLoadedRecordDate);
-                        }
-                    } else if (Early_Strength_Days) {
-                        baseDateObj.setDate(baseDateObj.getDate() - Early_Strength_Days);
-                    }
-                    baseDateObj.setDate(baseDateObj.getDate() + 28);
-                    
-                    const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
-                    dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
-                    
-                    // Check if actual result is currently displayed
-                    const hasActual = actualResultBox && actualResultBox.style.display !== 'none';
-                    if (hasActual) {
-                        dateLabel.innerText = 'Actual Break Date:';
-                        dateBox.style.background = 'rgba(56, 189, 248, 0.1)';
-                        dateBox.style.borderColor = 'rgba(56, 189, 248, 0.2)';
-                        dateVal.style.color = 'var(--accent)';
+                    const decision = result.typesafe || {};
+                    if (decision.enabled && !decision.safe_to_show) {
+                        strengthHtml = `<span style="font-size:0.95rem;color:#f59e0b;">Held for qualified review — TypeSafe confidence ${(decision.probability * 100).toFixed(0)}%</span>`;
+                        advice += `<br><br><strong>TypeSafe review required before using this estimate.</strong>`;
+                        document.getElementById('expectedDateBox').style.display = 'none';
                     } else {
-                        dateLabel.innerText = 'Expected 28-Day Break Date:';
-                        dateBox.style.background = 'rgba(16, 185, 129, 0.1)';
-                        dateBox.style.borderColor = 'rgba(16, 185, 129, 0.2)';
-                        dateVal.style.color = '#10b981';
+                        strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
+                        advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
+
+                        const dateBox = document.getElementById('expectedDateBox');
+                        const dateLabel = dateBox.querySelector('.label');
+                        const dateVal = document.getElementById('expectedBreakDate');
+
+                        let baseDateObj = new Date();
+                        if (lastLoadedRecordDate) {
+                            const parts = lastLoadedRecordDate.split('-');
+                            if (parts.length === 3) {
+                                baseDateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                            } else {
+                                baseDateObj = new Date(lastLoadedRecordDate);
+                            }
+                        } else if (Early_Strength_Days) {
+                            baseDateObj.setDate(baseDateObj.getDate() - Early_Strength_Days);
+                        }
+                        baseDateObj.setDate(baseDateObj.getDate() + 28);
+
+                        const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+                        dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
+
+                        // Check if actual result is currently displayed
+                        const hasActual = actualResultBox && actualResultBox.style.display !== 'none';
+                        if (hasActual) {
+                            dateLabel.innerText = 'Actual Break Date:';
+                            dateBox.style.background = 'rgba(56, 189, 248, 0.1)';
+                            dateBox.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+                            dateVal.style.color = 'var(--accent)';
+                        } else {
+                            dateLabel.innerText = 'Expected 28-Day Break Date:';
+                            dateBox.style.background = 'rgba(16, 185, 129, 0.1)';
+                            dateBox.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+                            dateVal.style.color = '#10b981';
+                        }
+                        dateBox.style.display = 'flex';
                     }
-                    dateBox.style.display = 'flex';
                 }
             } else {
                 strengthHtml = `<span style="font-size:0.95rem;color:#94a3b8;">ML not used — ${modelMeta.confidenceLabel}</span>`;
@@ -1156,6 +1163,19 @@ async function calculateRawMixProportions() {
         } else {
             adviceContainer.style = 'margin-top: 1.2rem; padding: 1rem; background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;';
             adviceContainer.innerHTML = `<p><strong>✅ Optimal Sintering Design:</strong> Moduli targets satisfied (Liquid content: ${data.liquid_content}%, C₃A: ${ph.C3A}%).</p>`;
+        }
+
+        const typesafe = data.typesafe || {};
+        if (typesafe.enabled) {
+            const labels = {
+                monitor: 'Monitor routine plant data',
+                adjust_recipe: 'Adjust recipe or process targets',
+                stop_and_review: 'Stop and request qualified review',
+            };
+            const action = typesafe.requires_human_review
+                ? labels.stop_and_review
+                : (labels[typesafe.action] || labels.stop_and_review);
+            adviceContainer.innerHTML += `<p style="margin-top:0.7rem;"><strong>TypeSafe review:</strong> ${action} (${(typesafe.confidence * 100).toFixed(0)}% confidence).</p>`;
         }
 
         if (resultsBlock) resultsBlock.style.display = 'block';

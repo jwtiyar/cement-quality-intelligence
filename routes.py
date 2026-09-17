@@ -22,6 +22,7 @@ from schemas import (
     RawMixRequest,
 )
 import state
+from typesafe_ai import assess_prediction, judge_rawmix, rerank_contexts
 
 router = APIRouter()
 
@@ -141,6 +142,13 @@ async def predict(body: PredictRequest):
         pred_df = pd.DataFrame([features_val], columns=ML_FEATURES)
         pred = float(model.predict(pred_df)[0])
         ml_meta = state.data_cache["ml"][c_type]
+        typesafe = assess_prediction(
+            cement_type=c_type,
+            prediction=pred,
+            confidence=ml_meta["confidence"],
+            r2=ml_meta["r2"],
+            rmse=ml_meta["rmse"],
+        )
 
         return {
             "prediction": round(pred, 2),
@@ -148,6 +156,7 @@ async def predict(body: PredictRequest):
             "confidenceLabel": ml_meta["confidenceLabel"],
             "r2": ml_meta["r2"],
             "rmse": ml_meta["rmse"],
+            "typesafe": typesafe,
         }
     except HTTPException:
         raise
@@ -158,7 +167,13 @@ async def predict(body: PredictRequest):
 @router.post("/api/rawmix/calculate")
 async def rawmix_calculate(body: RawMixRequest):
     try:
-        return calculate_rawmix(body.model_dump())
+        result = calculate_rawmix(body.model_dump())
+        result["typesafe"] = judge_rawmix(
+            cement_type=body.cement_type,
+            clinker=result["clinker"],
+            diagnostics=result["diagnostics"],
+        )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -296,16 +311,25 @@ async def chat(body: ChatRequest):
             top_k = min(5, len(similarities))
             top_indices = np.argsort(similarities)[::-1][:top_k]
 
+            candidates = []
             for idx in top_indices:
                 score = float(similarities[idx])
                 if score > 0.05: # Minimum similarity threshold
                     chunk = index["chunks"][idx]
-                    retrieved_contexts.append(chunk["text"])
-                    sources.append({
+                    candidates.append({
+                        "text": chunk["text"],
                         "file": chunk["source"],
                         "page": chunk["page"],
                         "score": round(score, 3)
                     })
+
+            for candidate in rerank_contexts(message, candidates):
+                retrieved_contexts.append(candidate["text"])
+                sources.append({
+                    "file": candidate["file"],
+                    "page": candidate["page"],
+                    "score": candidate["score"],
+                })
 
         # Format the system instruction
         context_str = "\n\n".join([f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}" for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))])
