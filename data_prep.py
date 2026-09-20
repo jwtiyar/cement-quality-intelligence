@@ -9,6 +9,7 @@ import pandas as pd
 
 CEMENT_TYPES = ["OPC", "SRC", "SBC"]
 ML_EXCLUDED_YEARS = {2019}
+STRENGTH_28D_COLUMNS = ["Cmp.St. Mpa_28 day", "28 day", "28 days"]
 
 NUMERIC_COLS = [
     "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
@@ -39,18 +40,33 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     # The model contract is explicitly 2-day input → 28-day target.
     df["Strength_Early"] = df["Strength_2D"]
 
-    # Preserve which workbook column supplied each target value. The order is
-    # only a fallback for rows where multiple source columns are populated.
-    strength_28_cols = ["Cmp.St. Mpa_28 day", "28 day", "28 days"]
+    # Different workbook generations use different 28-day columns. They are
+    # not interchangeable: selecting by row would mix incompatible target
+    # regimes when a new report format appears. Pick the source with the latest
+    # dated observation for each cement type, then use only that source.
+    parsed_dates = pd.to_datetime(df["Date"], errors="coerce")
+    source_by_type: dict[str, str] = {}
+    for cement_type, group in df.groupby("Cement_Type", dropna=False):
+        candidates = []
+        for priority, col in enumerate(STRENGTH_28D_COLUMNS):
+            if col not in group.columns:
+                continue
+            values = pd.to_numeric(group[col].astype(str).str.replace(",", "."), errors="coerce")
+            valid = values.notna() & parsed_dates.loc[group.index].notna()
+            if valid.any():
+                latest_date = parsed_dates.loc[group.index[valid]].max()
+                latest_count = int((valid & (parsed_dates.loc[group.index] >= latest_date.replace(day=1))).sum())
+                candidates.append((latest_date, latest_count, -priority, col))
+        if candidates:
+            source_by_type[str(cement_type)] = max(candidates)[3]
+
     df["Strength_28D"] = np.nan
     df["Strength_28D_Source"] = pd.Series(pd.NA, index=df.index, dtype="string")
-    for col in strength_28_cols:
-        if col not in df.columns:
-            continue
-        values = pd.to_numeric(df[col].astype(str).str.replace(",", "."), errors="coerce")
-        mask = df["Strength_28D"].isna() & values.notna()
+    for cement_type, source in source_by_type.items():
+        values = pd.to_numeric(df[source].astype(str).str.replace(",", "."), errors="coerce")
+        mask = (df["Cement_Type"].astype(str) == cement_type) & values.notna()
         df.loc[mask, "Strength_28D"] = values[mask]
-        df.loc[mask, "Strength_28D_Source"] = col
+        df.loc[mask, "Strength_28D_Source"] = source
 
     fin_cols = [c for c in df.columns if "SSB" in c]
     if fin_cols:

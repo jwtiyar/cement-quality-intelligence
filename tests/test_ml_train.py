@@ -70,6 +70,7 @@ class TestModelTraining:
             conf = meta[t]["confidence"]
             assert conf in ("predictive", "exploratory", "chemistry_only")
             assert meta[t]["confidenceLabel"]  # non-empty label
+            assert isinstance(meta[t]["modelBeatsRecentBaseline"], bool)
 
     def test_sparse_data_reports_no_validation_window(self):
         row = {feature: 1.0 for feature in ML_FEATURES}
