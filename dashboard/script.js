@@ -725,7 +725,7 @@ function setupMLPredictor() {
             let strengthHtml = '--';
             let advice = `<strong>Chemistry Engine:</strong><br>${chem.advice}`;
 
-            if (modelMeta.hasModel && modelMeta.confidence !== 'chemistry_only') {
+            if (modelMeta.hasModel) {
                 const res = await fetch('/api/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -750,7 +750,12 @@ function setupMLPredictor() {
                         document.getElementById('expectedDateBox').style.display = 'none';
                     } else {
                         strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
-                        advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                        advice += `<br><br><strong>${result.confidenceLabel}</strong>`;
+                        if (result.predictionSource === 'recent_mean') {
+                            advice += `<br>Historical XGBoost held back; recent validation favored this baseline.`;
+                        } else {
+                            advice += ` (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                        }
                         if (decision.enabled) {
                             advice += `<br><strong>TypeSafe safe-to-show:</strong> ${(decision.probability * 100).toFixed(0)}%`;
                         }

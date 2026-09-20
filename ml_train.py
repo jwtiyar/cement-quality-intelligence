@@ -58,17 +58,19 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         )
 
         date_min = date_max = val_date_min = val_date_max = None
+        recent_average = None
         if not df_ml.empty and "Date_str" in df_ml.columns:
+            df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
             valid_dates = df_ml["Date_str"].dropna()
             if not valid_dates.empty:
                 date_min = str(valid_dates.min())
                 date_max = str(valid_dates.max())
+                recent_average = float(df_ml["Strength_28D"].tail(min(100, len(df_ml))).mean())
 
         if len(df_ml) >= MIN_TRAIN_SAMPLES:
             # Chronological split: train on the earliest 80% of records,
             # validate on the most recent 20%. The model predicts the future,
             # so validation must never leak future rows into training.
-            df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
             split_idx = int(len(df_ml) * 0.8)
             X = df_ml[ML_FEATURES]
             y = df_ml["Strength_28D"]
@@ -107,6 +109,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             "rmse": round(rmse, 2),
             "importances": feature_importances,
             "averages": feature_averages,
+            "recentAverage": round(recent_average, 3) if recent_average is not None else None,
             "trainSamples": int(len(df_ml)),
             "targetSourceCounts": {
                 str(source): int(count)

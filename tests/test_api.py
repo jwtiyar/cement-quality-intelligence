@@ -170,6 +170,8 @@ class TestPredictEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert "prediction" in body
+        assert body["predictionSource"] == "recent_mean"
+        assert "mlPrediction" in body
         assert "confidence" in body
         assert body["typesafe"]["enabled"] is False
 

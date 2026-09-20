@@ -141,20 +141,32 @@ async def predict(body: PredictRequest):
             features_val.append(float(val))
 
         pred_df = pd.DataFrame([features_val], columns=ML_FEATURES)
-        pred = float(model.predict(pred_df)[0])
+        ml_prediction = float(model.predict(pred_df)[0])
         ml_meta = state.data_cache["ml"][c_type]
-        typesafe = assess_prediction(
-            cement_type=c_type,
-            prediction=pred,
-            confidence=ml_meta["confidence"],
-            r2=ml_meta["r2"],
-            rmse=ml_meta["rmse"],
+        use_recent_baseline = ml_meta["confidence"] == "chemistry_only"
+        pred = float(ml_meta["recentAverage"]) if use_recent_baseline and ml_meta.get("recentAverage") is not None else ml_prediction
+        prediction_source = "recent_mean" if use_recent_baseline else "xgboost"
+        confidence_label = (
+            "Recent baseline guidance — ML confidence low"
+            if use_recent_baseline
+            else ml_meta["confidenceLabel"]
         )
+        typesafe = {"enabled": False}
+        if not use_recent_baseline:
+            typesafe = assess_prediction(
+                cement_type=c_type,
+                prediction=pred,
+                confidence=ml_meta["confidence"],
+                r2=ml_meta["r2"],
+                rmse=ml_meta["rmse"],
+            )
 
         return {
             "prediction": round(pred, 2),
+            "predictionSource": prediction_source,
+            "mlPrediction": round(ml_prediction, 2),
             "confidence": ml_meta["confidence"],
-            "confidenceLabel": ml_meta["confidenceLabel"],
+            "confidenceLabel": confidence_label,
             "r2": ml_meta["r2"],
             "rmse": ml_meta["rmse"],
             "typesafe": typesafe,

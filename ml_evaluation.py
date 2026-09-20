@@ -35,8 +35,8 @@ def _bootstrap_ci(y_true: np.ndarray, prediction: np.ndarray, seed: int = 42, sa
     return {metric: [float(np.percentile(scores, 2.5)), float(np.percentile(scores, 97.5))] for metric, scores in values.items()}
 
 
-def _model_predictions(X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.DataFrame) -> dict[str, np.ndarray]:
-    xgb_model = xgb.XGBRegressor(
+def _make_xgb() -> xgb.XGBRegressor:
+    return xgb.XGBRegressor(
         n_estimators=150,
         learning_rate=0.05,
         max_depth=3,
@@ -45,14 +45,31 @@ def _model_predictions(X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.Dat
         random_state=42,
         n_jobs=1,
     )
+
+
+def _model_predictions(train: pd.DataFrame, test: pd.DataFrame) -> dict[str, np.ndarray]:
+    X_train, y_train = train[ML_FEATURES], train["Strength_28D"]
+    X_test = test[ML_FEATURES]
+    xgb_model = _make_xgb()
     ridge = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
     xgb_model.fit(X_train, y_train)
     ridge.fit(X_train, y_train)
+
+    recent_cutoff = pd.to_datetime(train["Date_str"].max()) - pd.DateOffset(months=24)
+    recent_train = train[pd.to_datetime(train["Date_str"]) >= recent_cutoff]
+    recent_xgb = _make_xgb()
+    recent_xgb.fit(recent_train[ML_FEATURES], recent_train["Strength_28D"])
+
+    age_days = (pd.to_datetime(train["Date_str"].max()) - pd.to_datetime(train["Date_str"])).dt.days
+    weighted_xgb = _make_xgb()
+    weighted_xgb.fit(X_train, y_train, sample_weight=np.exp(-age_days.to_numpy() / 365.0))
     return {
         "train_mean": np.full(len(X_test), float(y_train.mean())),
         "recent_mean": np.full(len(X_test), float(y_train.tail(min(100, len(y_train))).mean())),
         "ridge": ridge.predict(X_test),
         "xgboost": xgb_model.predict(X_test),
+        "xgboost_recent_24m": recent_xgb.predict(X_test),
+        "xgboost_recency_weighted": weighted_xgb.predict(X_test),
     }
 
 
@@ -72,14 +89,14 @@ def rolling_evaluation(
     if first_test < 100:
         raise ValueError(f"Too many folds for {cement_type}: {folds} x {test_size}")
 
-    predictions: dict[str, list[np.ndarray]] = {name: [] for name in ("train_mean", "recent_mean", "ridge", "xgboost")}
+    predictions: dict[str, list[np.ndarray]] = {name: [] for name in ("train_mean", "recent_mean", "ridge", "xgboost", "xgboost_recent_24m", "xgboost_recency_weighted")}
     actual: list[np.ndarray] = []
     fold_reports = []
     for fold in range(folds):
         train_end = first_test + fold * test_size
         test_end = train_end + test_size
         train, test = frame.iloc[:train_end], frame.iloc[train_end:test_end]
-        fold_predictions = _model_predictions(train[ML_FEATURES], train["Strength_28D"], test[ML_FEATURES])
+        fold_predictions = _model_predictions(train, test)
         actual.append(test["Strength_28D"].to_numpy())
         for name, prediction in fold_predictions.items():
             predictions[name].append(prediction)
