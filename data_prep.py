@@ -13,7 +13,7 @@ ML_EXCLUDED_YEARS = {2019}
 NUMERIC_COLS = [
     "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
     "LSF", "C3S", "C2S", "C3A", "C4AF", "SM", "AM", "L.O.I", "Fineness",
-    "Strength_Early", "Strength_7D", "Strength_28D", "Early_Strength_Days",
+    "Strength_2D", "Strength_Early", "Strength_28D",
     "Residue_80",
 ]
 
@@ -27,15 +27,6 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     path = csv_path or default_csv_path()
     df = pd.read_csv(path)
 
-    if "Cmp.St. Mpa_3 day" in df.columns and "3 day" in df.columns:
-        df["Strength_3D"] = df["Cmp.St. Mpa_3 day"].combine_first(df["3 day"])
-    elif "Cmp.St. Mpa_3 day" in df.columns:
-        df["Strength_3D"] = df["Cmp.St. Mpa_3 day"]
-    elif "3 day" in df.columns:
-        df["Strength_3D"] = df["3 day"]
-    else:
-        df["Strength_3D"] = np.nan
-
     if "Cmp.St. Mpa_2 day" in df.columns and "2 day" in df.columns:
         df["Strength_2D"] = df["Cmp.St. Mpa_2 day"].combine_first(df["2 day"])
     elif "Cmp.St. Mpa_2 day" in df.columns:
@@ -45,12 +36,8 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     else:
         df["Strength_2D"] = np.nan
 
-    df["Strength_Early"] = df["Strength_3D"].combine_first(df["Strength_2D"])
-    df["Early_Strength_Days"] = np.where(
-        df["Strength_3D"].notna(),
-        3,
-        np.where(df["Strength_2D"].notna(), 2, np.nan),
-    )
+    # The model contract is explicitly 2-day input → 28-day target.
+    df["Strength_Early"] = df["Strength_2D"]
 
     # Preserve which workbook column supplied each target value. The order is
     # only a fallback for rows where multiple source columns are populated.
@@ -72,15 +59,6 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
             df["Fineness"] = df["Fineness"].combine_first(df[col])
     else:
         df["Fineness"] = np.nan
-
-    # 7-day strength — the single strongest predictor of 28-day strength (r=+0.92)
-    strength_7d_cols = [c for c in df.columns if "7 day" in c or c == "7D" or c == "7d"]
-    if strength_7d_cols:
-        df["Strength_7D"] = df[strength_7d_cols[0]]
-        for col in strength_7d_cols[1:]:
-            df["Strength_7D"] = df["Strength_7D"].combine_first(df[col])
-    else:
-        df["Strength_7D"] = np.nan
 
     # Sieve residue on 80 µm (%R80 / %R,80) — fineness proxy, r=-0.82 with 28D
     residue_cols = [c for c in df.columns if "%R" in c.upper()]

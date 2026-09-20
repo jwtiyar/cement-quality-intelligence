@@ -323,7 +323,7 @@ const eraLinePlugin = {
         ctx.fillText(label, lx + 1, ly - 9);
 
         // Left-side label: sparse zone
-        const sparseLabel = '← Early strength (2D/3D)';
+        const sparseLabel = '← 2-day strength';
         ctx.font = "400 10px system-ui";
         const sw = ctx.measureText(sparseLabel).width;
         const sx = Math.max(chart.chartArea.left + 4, x - sw - 8);
@@ -422,7 +422,7 @@ function updateChart(param) {
 function getParamUnit(param) {
     switch (param) {
         case 'Strength_28D': return '28-Day Strength (MPa)';
-        case 'Strength_Early': return 'Early (2D/3D) Strength (MPa)';
+        case 'Strength_Early': return '2-Day Strength (MPa)';
         case 'C3S': return 'Tricalcium Silicate (C3S %)';
         case 'CaO': return 'Lime (CaO %)';
         case 'Fineness': return 'Fineness / Blaine (cm²/g)';
@@ -438,7 +438,7 @@ function updateEraSubtitle(param) {
     const eraYear = dashboardData.strength28Era;
     if (param === 'Strength_28D' && eraYear) {
         subtitle.style.display = 'block';
-        subtitle.innerHTML = `⚠️ 28-day strength data becomes reliably available from <strong>${eraYear}</strong> onward. Earlier years have sparse 28D records (mostly 2D/3D/7D only).`;
+        subtitle.innerHTML = `⚠️ 28-day strength data becomes reliably available from <strong>${eraYear}</strong> onward. Earlier years have sparse 28D records (mostly 2-day tests only).`;
     } else {
         subtitle.style.display = 'none';
     }
@@ -504,7 +504,6 @@ function setupMLPredictor() {
         document.getElementById('opt_MgO').value = '';
         document.getElementById('opt_SO3').value = '';
         document.getElementById('opt_Strength_Early').value = '';
-        document.getElementById('opt_Early_Strength_Days').value = '';
         document.getElementById('opt_Fineness').value = '';
         
         document.getElementById('opt_res_C3S').innerText = '--';
@@ -644,7 +643,7 @@ function setupMLPredictor() {
     });
 
     // --- AI Mix Optimizer & Simulator Logic ---
-    const optInputs = ['opt_CaO', 'opt_SiO2', 'opt_Al2O3', 'opt_Fe2O3', 'opt_MgO', 'opt_SO3', 'opt_Strength_Early', 'opt_Early_Strength_Days', 'opt_Fineness'];
+    const optInputs = ['opt_CaO', 'opt_SiO2', 'opt_Al2O3', 'opt_Fe2O3', 'opt_MgO', 'opt_SO3', 'opt_Strength_Early', 'opt_Fineness'];
     
     function formatVal(val) {
         if (val === null || val === undefined || val === '') return '';
@@ -661,7 +660,6 @@ function setupMLPredictor() {
         document.getElementById('opt_MgO').value = formatVal(data.MgO);
         document.getElementById('opt_SO3').value = formatVal(data.SO3);
         document.getElementById('opt_Strength_Early').value = formatVal(data.Strength_Early);
-        document.getElementById('opt_Early_Strength_Days').value = formatVal(data.Early_Strength_Days) || '2';
         document.getElementById('opt_Fineness').value = formatVal(data.Fineness);
         runOptimizationSimulation();
     };
@@ -698,7 +696,6 @@ function setupMLPredictor() {
         const MgO = parseFloat(document.getElementById('opt_MgO').value) || 0;
         const SO3 = parseFloat(document.getElementById('opt_SO3').value) || 0;
         const Strength_Early = parseFloat(document.getElementById('opt_Strength_Early').value) || 0;
-        const Early_Strength_Days = parseFloat(document.getElementById('opt_Early_Strength_Days').value) || 2;
         const Fineness = parseFloat(document.getElementById('opt_Fineness').value) || 0;
 
         try {
@@ -722,7 +719,7 @@ function setupMLPredictor() {
             const reqData = {
                 Cement_Type: cType,
                 SiO2, Al2O3, Fe2O3, CaO, MgO, SO3,
-                Strength_Early, Early_Strength_Days, Fineness
+                Strength_Early, Fineness
             };
 
             let strengthHtml = '--';
@@ -770,8 +767,8 @@ function setupMLPredictor() {
                             } else {
                                 baseDateObj = new Date(lastLoadedRecordDate);
                             }
-                        } else if (Early_Strength_Days) {
-                            baseDateObj.setDate(baseDateObj.getDate() - Early_Strength_Days);
+                        } else {
+                            baseDateObj.setDate(baseDateObj.getDate() - 2);
                         }
                         baseDateObj.setDate(baseDateObj.getDate() + 28);
 

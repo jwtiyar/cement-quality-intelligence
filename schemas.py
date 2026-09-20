@@ -29,7 +29,6 @@ class PredictRequest(BaseModel):
     MgO: Optional[float] = Field(default=None, ge=0, le=100)
     SO3: Optional[float] = Field(default=None, ge=0, le=100)
     Strength_Early: Optional[float] = Field(default=None, ge=0)
-    Early_Strength_Days: Optional[float] = Field(default=None, ge=0)
     Fineness: Optional[float] = Field(default=None, ge=0)
 
 

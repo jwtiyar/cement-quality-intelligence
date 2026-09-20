@@ -145,7 +145,7 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
 
     # Recent Daily Test Records (Latest 60 Daily Tests)
     lines.append("\n--- LATEST DAILY LABORATORY TEST RESULTS (MOST RECENT 60 TEST DAYS) ---")
-    lines.append("(Note: The most recent 2-3 days may show 'Pending Curing / 2-3 Day Test in Progress' because cement cubes take time to cure before crushing.)")
+    lines.append("(Note: The most recent 2 days may show 'Pending Curing / 2-Day Test in Progress' because cement cubes take time to cure before crushing.)")
     recent_60 = valid_df.head(60)
     for _, row in recent_60.iterrows():
         d_str = str(row["Date_str"])
@@ -282,7 +282,7 @@ def reload_from_csv(csv_path: str | None = None) -> None:
             "retrainPolicy": "Models retrained in memory on every startup and Excel sync",
             "mlExcludedYears": sorted({2019}),
             "strength28Note": (
-                "Pre-~2018 rows often have 2D/3D/7D strength only; "
+                "Pre-~2018 rows often have 2-day strength only; "
                 "28-day training uses rows where 28D exists (~{n} rows).".format(n=strength_28_count)
             ),
         },
