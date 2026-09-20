@@ -97,7 +97,7 @@ def test_failed_refresh_preserves_existing_csv(tmp_path, monkeypatch):
 class TestStrengthNormalization:
     def test_strength_28d_present(self, df):
         valid = df["Strength_28D"].dropna()
-        assert len(valid) > 3000  # current authoritative source per cement type
+        assert len(valid) > 4000  # full historical target for reporting
 
     def test_strength_28d_source_matches_target(self, df):
         assert df.loc[df["Strength_28D"].notna(), "Strength_28D_Source"].notna().all()
@@ -144,5 +144,6 @@ def test_strength_source_uses_latest_authoritative_column(tmp_path):
 
     prepared = load_and_prepare(str(source))
 
-    assert prepared["Strength_28D"].tolist() == [41.0, 41.0]
-    assert prepared["Strength_28D_Source"].tolist() == ["28 days", "28 days"]
+    assert prepared["Strength_28D"].tolist() == [42.0, 41.0]
+    assert prepared["Strength_28D_Source"].tolist() == ["28 day", "28 days"]
+    assert prepared["Strength_28D_ML"].tolist() == [41.0, 41.0]
