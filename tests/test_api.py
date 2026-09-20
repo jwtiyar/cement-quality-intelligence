@@ -42,6 +42,12 @@ def client():
     return ApiClient(app)
 
 
+@pytest.fixture(autouse=True)
+def disable_optional_typesafe(monkeypatch):
+    """Keep API assertions deterministic even when the user has a local key."""
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
+
 BASE_MATERIALS = {
     "limestone": {"SiO2": 3.0, "Al2O3": 0.8, "Fe2O3": 0.5, "CaO": 52.0, "MgO": 0.5, "Na2O": 0.05, "K2O": 0.1, "SO3": 0.1, "LOI": 42.0, "H2O": 2.0},
     "shale": {"SiO2": 60.0, "Al2O3": 16.0, "Fe2O3": 7.0, "CaO": 3.0, "MgO": 2.0, "Na2O": 0.3, "K2O": 2.0, "SO3": 0.5, "LOI": 5.0, "H2O": 8.0},

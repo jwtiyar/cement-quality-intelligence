@@ -43,7 +43,11 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
     for c_type in CEMENT_TYPES:
         print(f"Training XGBoost Regressor for {c_type} 28-day strength...")
         df_sub = ml_training_frame(df, c_type)
-        df_ml = df_sub[ML_FEATURES + ["Strength_28D", "Date_str"]].dropna()
+        if "Strength_28D_Source" not in df_sub.columns:
+            # Keep small synthetic callers and older prepared frames compatible.
+            df_sub = df_sub.copy()
+            df_sub["Strength_28D_Source"] = "unknown"
+        df_ml = df_sub[ML_FEATURES + ["Strength_28D", "Date_str", "Strength_28D_Source"]].dropna()
 
         r2, rmse = 0.0, 0.0
         feature_importances: dict[str, float] = {}
@@ -104,6 +108,10 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             "importances": feature_importances,
             "averages": feature_averages,
             "trainSamples": int(len(df_ml)),
+            "targetSourceCounts": {
+                str(source): int(count)
+                for source, count in df_ml["Strength_28D_Source"].value_counts().items()
+            },
             "excludedYears": sorted(ML_EXCLUDED_YEARS),
             "strengthDateRange": {"min": date_min, "max": date_max},
             "validationDateRange": {"min": val_date_min, "max": val_date_max},

@@ -28,7 +28,7 @@ class TestDatasetShape:
         assert len(df) > 10000  # project states ~11,300 records
 
     def test_has_required_columns(self, df):
-        for col in ["Cement_Type", "Year", "Date", "SiO2", "CaO", "Strength_28D"]:
+        for col in ["Cement_Type", "Year", "Date", "SiO2", "CaO", "Strength_28D", "Strength_28D_Source"]:
             assert col in df.columns
 
     def test_cement_types(self, df):
@@ -96,6 +96,10 @@ class TestStrengthNormalization:
         valid = df["Strength_28D"].dropna()
         assert len(valid) > 4000  # README: ~5,000 of ~11,500
 
+    def test_strength_28d_source_matches_target(self, df):
+        assert df.loc[df["Strength_28D"].notna(), "Strength_28D_Source"].notna().all()
+        assert df.loc[df["Strength_28D"].isna(), "Strength_28D_Source"].isna().all()
+
     def test_strength_28d_plausible_range(self, df):
         valid = df["Strength_28D"].dropna()
         assert valid.between(20, 80).mean() > 0.95  # MPa physical range
@@ -123,3 +127,16 @@ class TestMlTrainingFrame:
 
     def test_excluded_years_constant(self):
         assert ML_EXCLUDED_YEARS == {2019}
+
+
+def test_strength_source_uses_first_populated_column(tmp_path):
+    source = tmp_path / "source.csv"
+    pd.DataFrame([
+        {"Year": 2024, "Cement_Type": "OPC", "Date": "2024-01-01", "28 day": 42.0, "28 days": 41.0},
+        {"Year": 2024, "Cement_Type": "OPC", "Date": "2024-01-02", "28 day": None, "28 days": 41.0},
+    ]).to_csv(source, index=False)
+
+    prepared = load_and_prepare(str(source))
+
+    assert prepared["Strength_28D"].tolist() == [42.0, 41.0]
+    assert prepared["Strength_28D_Source"].tolist() == ["28 day", "28 days"]
