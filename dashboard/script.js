@@ -5,17 +5,39 @@ let importanceChart = null;
 let dashboardData = null;
 let latestPredictionContext = null;
 
-const CEMENT_COLORS = {
-    OPC: { border: '#52a895', bg: 'rgba(82, 168, 149, 0.08)' },
-    SRC: { border: '#d6a75e', bg: 'transparent' },
-    SBC: { border: '#7fa4bd', bg: 'transparent' }
-};
-
-const systemTheme = matchMedia('(prefers-color-scheme: dark)');
-
 function themeToken(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
+
+function getCementChartColor(label) {
+    if (label === 'OPC') return themeToken('--cement-opc') || '#48a994';
+    if (label === 'SRC') return themeToken('--cement-src') || '#d49341';
+    if (label === 'SBC') return themeToken('--cement-sbc') || '#5ea1c9';
+    return themeToken('--text-secondary') || '#8e9fa2';
+}
+
+const CEMENT_COLORS = {
+    get OPC() {
+        return {
+            border: themeToken('--cement-opc') || '#48a994',
+            bg: themeToken('--accent-subtle') || 'rgba(72, 169, 148, 0.12)'
+        };
+    },
+    get SRC() {
+        return {
+            border: themeToken('--cement-src') || '#d49341',
+            bg: 'transparent'
+        };
+    },
+    get SBC() {
+        return {
+            border: themeToken('--cement-sbc') || '#5ea1c9',
+            bg: 'transparent'
+        };
+    }
+};
+
+const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 
 function resolvedTheme(preference) {
     return preference === 'system' ? (systemTheme.matches ? 'dark' : 'light') : preference;
@@ -23,11 +45,47 @@ function resolvedTheme(preference) {
 
 function syncChartTheme() {
     if (typeof Chart === 'undefined') return;
-    const text = themeToken('--text-secondary');
+    const text = themeToken('--chart-text') || themeToken('--text-secondary');
     const grid = themeToken('--chart-grid');
     const tooltip = themeToken('--chart-tooltip');
     Chart.defaults.color = text;
     Chart.defaults.borderColor = grid;
+
+    if (trendChart && trendChart.data?.datasets) {
+        if (trendChart.data.datasets[0]) {
+            trendChart.data.datasets[0].borderColor = CEMENT_COLORS.OPC.border;
+            trendChart.data.datasets[0].backgroundColor = CEMENT_COLORS.OPC.bg;
+            trendChart.data.datasets[0].pointBackgroundColor = CEMENT_COLORS.OPC.border;
+            trendChart.data.datasets[0].pointBorderColor = themeToken('--panel-bg');
+        }
+        if (trendChart.data.datasets[1]) {
+            trendChart.data.datasets[1].borderColor = CEMENT_COLORS.SRC.border;
+        }
+        if (trendChart.data.datasets[2]) {
+            trendChart.data.datasets[2].borderColor = CEMENT_COLORS.SBC.border;
+        }
+    }
+
+    if (monthlyChart && monthlyChart.data?.datasets) {
+        ['OPC', 'SRC', 'SBC'].forEach((c, idx) => {
+            if (monthlyChart.data.datasets[idx]) {
+                monthlyChart.data.datasets[idx].borderColor = CEMENT_COLORS[c].border;
+                monthlyChart.data.datasets[idx].backgroundColor = CEMENT_COLORS[c].bg;
+            }
+        });
+    }
+
+    if (distributionChart && distributionChart.data?.datasets?.[0]) {
+        const labels = distributionChart.data.labels || [];
+        distributionChart.data.datasets[0].backgroundColor = labels.map(l => getCementChartColor(l));
+        distributionChart.data.datasets[0].borderColor = labels.map(l => getCementChartColor(l));
+    }
+
+    if (importanceChart && importanceChart.data?.datasets?.[0]) {
+        const cType = document.getElementById('predictCementType')?.value || 'OPC';
+        importanceChart.data.datasets[0].borderColor = getCementChartColor(cType);
+        importanceChart.data.datasets[0].backgroundColor = themeToken('--accent-subtle') || getCementChartColor(cType);
+    }
 
     [trendChart, monthlyChart, distributionChart, importanceChart].filter(Boolean).forEach(chart => {
         const plugins = chart.options.plugins || {};
@@ -48,9 +106,21 @@ function applyTheme(preference, persist = true) {
     const selector = document.getElementById('themeSelector');
     if (selector) selector.value = preference;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = themeToken('--bg-color');
+    if (meta) meta.content = themeToken('--bg-canvas') || themeToken('--bg-color');
     syncChartTheme();
 }
+
+function applyPalette(palette, persist = true) {
+    document.documentElement.dataset.palette = palette;
+    if (persist) localStorage.setItem('cementPalette', palette);
+    const selector = document.getElementById('paletteSelector');
+    if (selector) selector.value = palette;
+    syncChartTheme();
+}
+
+const savedPalette = localStorage.getItem('cementPalette') || 'portland';
+applyPalette(savedPalette, false);
+document.getElementById('paletteSelector')?.addEventListener('change', event => applyPalette(event.target.value));
 
 const savedTheme = localStorage.getItem('cementTheme') || 'system';
 applyTheme(savedTheme, false);
@@ -293,13 +363,14 @@ const eraLinePlugin = {
         ctx.save();
 
         // Shaded region: before era (sparse data zone)
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.04)';
+        const warnColor = themeToken('--status-warning') || '#d49341';
+        ctx.fillStyle = themeToken('--status-warning-bg') || 'rgba(212, 147, 65, 0.08)';
         ctx.fillRect(chart.chartArea.left, top, x - chart.chartArea.left, bottom - top);
 
         // Dashed vertical line
         ctx.beginPath();
         ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.65)';
+        ctx.strokeStyle = warnColor;
         ctx.lineWidth = 1.5;
         ctx.moveTo(x, top);
         ctx.lineTo(x, bottom);
@@ -318,7 +389,7 @@ const eraLinePlugin = {
         ctx.fill();
 
         // Label text
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+        ctx.fillStyle = warnColor;
         ctx.textBaseline = 'top';
         ctx.fillText(label, lx + 1, ly - 9);
 
@@ -460,11 +531,11 @@ function buildCorrelationTable() {
     // Build body rows
     let bodyHTML = '<tbody>';
     cols.forEach(rowCol => {
-        bodyHTML += `<tr><td style="font-weight: 500; text-align: left; background: rgba(15, 23, 42, 0.4);">${rowCol.replace('_', ' ')}</td>`;
+        bodyHTML += `<tr><td style="font-weight: 600; text-align: left; background: var(--panel-header); font-family: var(--font-sans);">${rowCol.replace('_', ' ')}</td>`;
         cols.forEach(colCol => {
             const val = matrix[rowCol][colCol] || 0;
-            const color = getCorrelationColor(val);
-            bodyHTML += `<td style="background-color: ${color}; color: #ffffff; font-weight: bold;">${val.toFixed(2)}</td>`;
+            const style = getCorrelationStyle(val);
+            bodyHTML += `<td style="background-color: ${style.bg}; color: ${style.color}; font-weight: 600; text-align: center;">${val.toFixed(2)}</td>`;
         });
         bodyHTML += '</tr>';
     });
@@ -473,12 +544,28 @@ function buildCorrelationTable() {
     table.innerHTML = headerHTML + bodyHTML;
 }
 
-function getCorrelationColor(val) {
-    if (val === 1.0) return 'rgba(56, 189, 248, 0.15)'; // Identity diagonal
+function getCorrelationStyle(val) {
+    if (val === 1.0) {
+        return {
+            bg: 'var(--accent-subtle)',
+            color: 'var(--accent)'
+        };
+    }
+    const isLight = document.documentElement.dataset.themeResolved === 'light';
     if (val > 0) {
-        return `rgba(239, 68, 68, ${val * 0.7})`; // Positive = Red opacity
+        const opacity = Math.min(Math.max(val * 0.7, 0.08), 0.85);
+        const textColor = opacity > 0.45 ? '#ffffff' : (isLight ? '#12191a' : '#e6eded');
+        return {
+            bg: `rgba(217, 83, 79, ${opacity.toFixed(2)})`,
+            color: textColor
+        };
     } else {
-        return `rgba(59, 130, 246, ${Math.abs(val) * 0.7})`; // Negative = Blue opacity
+        const opacity = Math.min(Math.max(Math.abs(val) * 0.7, 0.08), 0.85);
+        const textColor = opacity > 0.45 ? '#ffffff' : (isLight ? '#12191a' : '#e6eded');
+        return {
+            bg: `rgba(94, 161, 201, ${opacity.toFixed(2)})`,
+            color: textColor
+        };
     }
 }
 
@@ -784,14 +871,14 @@ function setupMLPredictor() {
                         const hasActual = actualResultBox && actualResultBox.style.display !== 'none';
                         if (hasActual) {
                             dateLabel.innerText = 'Actual Break Date:';
-                            dateBox.style.background = 'rgba(56, 189, 248, 0.1)';
-                            dateBox.style.borderColor = 'rgba(56, 189, 248, 0.2)';
-                            dateVal.style.color = 'var(--accent)';
+                            dateBox.style.background = 'var(--status-info-bg)';
+                            dateBox.style.borderColor = 'var(--status-info-border)';
+                            dateVal.style.color = 'var(--status-info)';
                         } else {
                             dateLabel.innerText = 'Expected 28-Day Break Date:';
-                            dateBox.style.background = 'rgba(16, 185, 129, 0.1)';
-                            dateBox.style.borderColor = 'rgba(16, 185, 129, 0.2)';
-                            dateVal.style.color = '#10b981';
+                            dateBox.style.background = 'var(--status-nominal-bg)';
+                            dateBox.style.borderColor = 'var(--status-nominal-border)';
+                            dateVal.style.color = 'var(--status-nominal)';
                         }
                         dateBox.style.display = 'flex';
                     }
@@ -826,13 +913,13 @@ function populateLowStrengthDays() {
         tr.style.animation = `fadeInUp 0.5s ease-out ${i * 0.08}s forwards`;
         tr.style.opacity = '0';
         
-        // Color coding for low strength value
         const strVal = a.Strength;
-        const color = strVal < 35 ? '#ef4444' : '#f59e0b';
+        const color = strVal < 35 ? 'var(--status-alarm)' : 'var(--status-warning)';
+        const badgeType = (a.Type || 'opc').toLowerCase();
         
         tr.innerHTML = `
             <td>${escapeHtml(a.Date)}</td>
-            <td><span style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">${escapeHtml(a.Type)}</span></td>
+            <td><span class="cement-badge cement-badge-${badgeType}">${escapeHtml(a.Type)}</span></td>
             <td style="color: ${color}; font-weight: 700;">${escapeHtml(strVal)}</td>
             <td>${escapeHtml(a.C3S)}</td>
         `;
@@ -847,19 +934,8 @@ function initDistributionChart() {
     const labels = Object.keys(distData);
     const data = Object.values(distData);
     
-    // Assign colors dynamically based on label
-    const bgColors = labels.map(label => {
-        if(label === 'OPC') return 'rgba(56, 189, 248, 0.8)';
-        if(label === 'SRC') return 'rgba(16, 185, 129, 0.8)';
-        if(label === 'SBC') return 'rgba(139, 92, 246, 0.8)';
-        return 'rgba(255, 255, 255, 0.3)'; // Fallback
-    });
-    const borderColors = labels.map(label => {
-        if(label === 'OPC') return '#38bdf8';
-        if(label === 'SRC') return '#10b981';
-        if(label === 'SBC') return '#8b5cf6';
-        return '#ffffff';
-    });
+    const bgColors = labels.map(label => getCementChartColor(label));
+    const borderColors = labels.map(label => getCementChartColor(label));
 
     distributionChart = new Chart(ctx, {
         type: 'doughnut',
@@ -870,7 +946,7 @@ function initDistributionChart() {
                 backgroundColor: bgColors,
                 borderColor: borderColors,
                 borderWidth: 1,
-                hoverOffset: 10
+                hoverOffset: 6
             }]
         },
         options: {
@@ -898,6 +974,7 @@ function initImportanceChart(cType) {
     const sortedFeatures = Object.keys(importances).sort((a, b) => importances[b] - importances[a]);
     const labels = sortedFeatures.map(f => f.replace('_', ' '));
     const data = sortedFeatures.map(f => (importances[f] * 100).toFixed(2));
+    const border = getCementChartColor(cType);
 
     importanceChart = new Chart(ctx, {
         type: 'bar',
@@ -906,10 +983,10 @@ function initImportanceChart(cType) {
             datasets: [{
                 label: 'Importance (%)',
                 data: data,
-                backgroundColor: 'rgba(56, 189, 248, 0.5)',
-                borderColor: '#38bdf8',
+                backgroundColor: themeToken('--accent-subtle') || border,
+                borderColor: border,
                 borderWidth: 1,
-                borderRadius: 4
+                borderRadius: 2
             }]
         },
         options: {
@@ -956,13 +1033,8 @@ function updateImportanceChart(cType) {
     importanceChart.data.labels = labels;
     importanceChart.data.datasets[0].data = data;
     
-    // Change color based on cType
-    let color = 'rgba(56, 189, 248, 0.5)';
-    let border = '#38bdf8';
-    if(cType === 'SRC') { color = 'rgba(16, 185, 129, 0.5)'; border = '#10b981'; }
-    else if(cType === 'SBC') { color = 'rgba(139, 92, 246, 0.5)'; border = '#8b5cf6'; }
-    
-    importanceChart.data.datasets[0].backgroundColor = color;
+    const border = getCementChartColor(cType);
+    importanceChart.data.datasets[0].backgroundColor = themeToken('--accent-subtle') || border;
     importanceChart.data.datasets[0].borderColor = border;
     
     importanceChart.update();
@@ -1286,9 +1358,9 @@ async function calculateRawMixProportions() {
 
         if (diags.length > 0) {
             const hasError = diags.some(d => d.severity === 'error');
-            adviceContainer.style = hasError
-                ? 'margin-top: 1.2rem; padding: 1rem; background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;'
-                : 'margin-top: 1.2rem; padding: 1rem; background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;';
+            adviceContainer.className = 'advice-card';
+            adviceContainer.dataset.tone = hasError ? 'alarm' : 'warning';
+            adviceContainer.removeAttribute('style');
             diags.forEach(d => appendStatus(
                 adviceContainer,
                 d.severity === 'error' ? '🚨' : '⚠️',
@@ -1296,7 +1368,9 @@ async function calculateRawMixProportions() {
                 'margin-bottom:0.5rem;'
             ));
         } else {
-            adviceContainer.style = 'margin-top: 1.2rem; padding: 1rem; background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0; text-align: left;';
+            adviceContainer.className = 'advice-card';
+            adviceContainer.dataset.tone = 'nominal';
+            adviceContainer.removeAttribute('style');
             appendStatus(adviceContainer, '✅ Optimal Sintering Design:', `Moduli targets satisfied (Liquid content: ${data.liquid_content}%, C₃A: ${ph.C3A}%).`);
         }
 
@@ -1318,20 +1392,17 @@ async function calculateRawMixProportions() {
                 adviceContainer,
                 'Human-review probability:',
                 `${(typesafe.review_probability * 100).toFixed(0)}%${probabilities ? `\n${probabilities}` : ''}`,
-                'margin-top:0.35rem;color:#94a3b8;white-space:pre-line;'
+                'margin-top:0.35rem;color:var(--text-secondary);white-space:pre-line;'
             );
         }
 
         if (resultsBlock) resultsBlock.style.display = 'block';
         if (proportionsBlock) proportionsBlock.style.display = 'block';
         if (promptBlock && data.explanation) {
+            promptBlock.className = 'advice-card';
+            promptBlock.dataset.tone = 'info';
             promptBlock.style.display = 'block';
-            promptBlock.style.padding = '1.5rem';
-            promptBlock.style.background = 'rgba(255, 255, 255, 0.03)';
-            promptBlock.style.borderLeft = '4px solid #38bdf8';
-            promptBlock.style.borderRadius = '8px';
-            promptBlock.style.textAlign = 'left';
-            promptBlock.style.marginTop = '2rem';
+            promptBlock.style.marginTop = '1rem';
             setSafeRichText(promptBlock, data.explanation);
         } else if (promptBlock) {
             promptBlock.style.display = 'none';
@@ -1608,7 +1679,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     Ask about plant results or search the reference documents.
                 </div>
             `;
-            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">Sources will appear after an answer cites a document.</div>`;
+            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">Sources will appear after an answer cites a document.</div>`;
         });
     }
 
@@ -1690,13 +1761,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 citedSources.innerHTML = "";
                 data.sources.forEach(src => {
                     const item = document.createElement("div");
-                    item.style = "padding: 0.5rem; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 3px solid var(--accent); margin-bottom: 0.3rem;";
+                    item.className = "source-item";
                     const typeSafeScore = Number.isFinite(src.typesafeScore)
                         ? `<span>TypeSafe: ${(src.typesafeScore * 100).toFixed(0)}%</span>`
                         : '';
                     item.innerHTML = `
-                        <div style="font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(src.file)}">${escapeHtml(src.file)}</div>
-                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-top:0.2rem; color:#94a3b8;">
+                        <div style="font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(src.file)}">${escapeHtml(src.file)}</div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-top:0.2rem; color:var(--text-secondary);">
                             <span>Page ${escapeHtml(src.page)}</span>
                             <span>TF-IDF: ${(src.score * 100).toFixed(0)}%</span>
                             ${typeSafeScore}
@@ -1705,7 +1776,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     citedSources.appendChild(item);
                 });
             } else {
-                citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">No sources cited for this query.</div>`;
+                citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">No sources cited for this query.</div>`;
             }
 
         } catch (err) {
