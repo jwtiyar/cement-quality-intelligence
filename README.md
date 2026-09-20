@@ -4,9 +4,9 @@ An intelligent, full-stack dashboard for cement plant quality control. This appl
 
 ## Key Features
 
-- **Machine Learning Strength Prediction:** Automatically trains XGBoost models on your historical data (spanning 10+ years) to predict 28-day compressive strength based on early strength (2/3 day), chemistry, and fineness. Separate models are trained dynamically for OPC, SRC, and SBC. Validation is chronological (train on oldest 80%, validate on newest 20%) so reported R² and RMSE are honest forward-prediction numbers.
+- **Machine Learning Strength Prediction:** Automatically trains XGBoost models on your historical data (spanning 10+ years) to predict 28-day compressive strength based on 2-day strength, chemistry, and fineness. Separate models are trained dynamically for OPC, SRC, and SBC. The loader keeps each cement type on its latest authoritative 28-day source column so workbook-format changes cannot mix target regimes. Validation is chronological and must beat a recent-data baseline before ML is shown as a sample-specific estimate; otherwise the UI uses a clearly labeled recent-data baseline.
 - **Raw Mix Optimization Solver:** Enter the chemistry of your raw materials (Limestone, Clay, Iron Ore, etc.) and target moduli (LSF, SM, AM). The solver validates inputs, calculates the optimal blend proportions, predicts resulting clinker chemistry (SiO₂, Al₂O₃, Fe₂O₃, CaO), Bogue phases (C₃S, C₂S, C₃A, C₄AF), and ensures Liquid Phase content is within safe sintering limits (23%-29%). When targets are simultaneously unreachable with the given materials, the solver falls back to the closest feasible mix and reports residuals + infeasibility instead of returning physically impossible negative proportions.
-- **AI Process & Quality Assistant (RAG & Live Data):** Chat with your plant manuals, ASTM standards, or textbooks right inside the dashboard. A local TF-IDF search engine retrieves the exact relevant paragraphs and pages, while **Google GenAI SDK (Gemini)** synthesizes operational troubleshooting responses. Additionally, the assistant has direct awareness of your live plant laboratory dataset (daily, weekly, and monthly quality trends and test records). Chat output is HTML-escaped before rendering to prevent prompt-injection XSS.
+- **AI Process & Quality Assistant (RAG & Live Data):** Chat with your plant manuals, ASTM standards, or textbooks right inside the dashboard. A local TF-IDF search engine retrieves the exact relevant paragraphs and pages, then the UI can send that context to **Gemini 3.8 Flash** or a locally signed-in **Codex/ChatGPT account**. Codex runs in an ephemeral read-only session with connectors and network tools disabled. The assistant also receives the live plant laboratory summary. Chat output is HTML-escaped before rendering to prevent prompt-injection XSS.
 - **Optional TypeSafe Decision Review:** When `TYPESAFE_API_KEY` is configured, semantic checks rerank retrieved evidence, review raw-mix recommendations, and hold uncertain ML estimates for qualified review. If the service is unavailable, deterministic application behavior remains in place.
 - **Automated Anomaly Detection:** Validates thousands of historical daily report records against strict ASTM C150 and EN 197-1 chemical/strength standards. Suspicious values (like typos in Excel sheets) trigger smart alerts in the dashboard UI indicating the date, cement type, and out-of-bounds parameter.
 - **Dynamic Excel Synchronization:** Extracts and cleans data from messy historical daily report Excel files dynamically. A single click in the UI syncs the latest data without needing server restarts. Writes are atomic (temp file + rename) so a crash mid-export can never leave a truncated CSV or index.
@@ -44,6 +44,9 @@ data source and run the script again.
   chat responses. `TYPESAFE_API_KEY` is optional; when present it adds semantic
   review to raw-mix recommendations, RAG retrieval, and ML prediction display.
   Neither key is required for the offline dashboard and solver.
+- A local `codex login` session — optional alternative to Gemini. The Codex
+  provider uses the signed-in ChatGPT account with `gpt-5.6-luna` at medium
+  reasoning and does not require an OpenAI API key.
 - `rawmix/` reference files — local PDFs, spreadsheets, Word documents, and
   helper files may be placed here for offline work, but they are ignored and
   not redistributed. The public root-level `rawmix_solver.py` and dashboard
@@ -92,7 +95,7 @@ If you run this application and the year folders (`202X`) are missing from the p
 ### Prerequisites
 - Python 3.10 or newer installed on your system.
 - Git (optional, if you want to clone from a repository instead of copying files).
-- A Gemini API Key (needed for the AI Chat Assistant).
+- A Gemini API key or a local Codex CLI signed in with `codex login` (needed for AI responses).
 
 ### 1. Environment Setup (Windows)
 1. Double-click the `start_dashboard.bat` script.
@@ -118,6 +121,10 @@ To enable the AI chat feature, configure your API key outside the project folder
 ```bash
 mkdir -p ~/.config/cement-app && printf "Enter GEMINI_API_KEY (typing hidden): " && read -s val && echo && echo "GEMINI_API_KEY=$val" >> ~/.config/cement-app/.env && chmod 600 ~/.config/cement-app/.env && echo "Saved."
 ```
+
+Alternatively, run `codex login` once and select **Codex — ChatGPT account** in
+the assistant tab. The backend reuses that local login; credentials are never
+sent to the browser.
 
 ### 4. Index Knowledge Base Manuals
 1. Drop your PDF textbooks, standards, or manuals into the `cement_app/knowledge_base/` folder.
@@ -171,7 +178,7 @@ The script boots the server, loads the dashboard in a real Firefox browser, clic
 - `rag_index.py`: Local TF-IDF search index builder. Extracts text from PDFs and builds a search index saved to `knowledge_base/rag_index.pkl`. Writes are atomic (temp + rename).
 - `state.py`: Manages the in-memory data cache, generates the anomaly detection lists, and performs global state management. Dataset summary writes are atomic.
 - `build_dataset.py`: Scans and parses messy historical Excel files into a clean pandas DataFrame (`ALL_CEMENT_DATA.csv`). The CSV write is atomic.
-- `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data. Features include chemistry oxides, early strength (2/3-day), fineness, **7-day strength** and **80 µm sieve residue** — the two strongest predictors of 28-day strength (correlation +0.92 / −0.82). **Training uses a chronological split** (earliest 80% train, most recent 20% validate) so reported metrics are honest forward-prediction numbers, not random-split leakage. All models currently report `chemistry_only` confidence (R² negative on the forward period).
+- `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data using chemistry oxides, 2-day strength, and fineness. **Training uses a chronological split** (earliest 80% train, most recent 20% validate) so reported metrics are honest forward-prediction numbers, not random-split leakage. All models currently report `chemistry_only` confidence (R² negative on the forward period).
 - `rawmix_solver.py`: Contains the linear algebra optimization logic for calculating material proportions based on moduli targets. Validates all inputs (finite oxides, LOI/H2O in [0,100), positive calorific value and targets, non-negative recipes). When the exact 4×4 solve yields negative proportions, falls back to a bounded SLSQP least-squares solve and reports residuals + `feasible`/`infeasible` status.
 - `chemistry.py`: Single source of truth for Boge phase calculations, liquid content, and moduli. `calc_bogue()` returns raw values (no silent clamping) and `analyze_clinker()` flags physically impossible compositions via `phases_valid` / `negative_phases`.
 - `dashboard/`: Contains the frontend HTML, CSS, and Vanilla JavaScript. AI chat output is HTML-escaped before rendering to prevent prompt-injection XSS.

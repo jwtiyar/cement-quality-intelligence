@@ -28,7 +28,7 @@ class TestDatasetShape:
         assert len(df) > 10000  # project states ~11,300 records
 
     def test_has_required_columns(self, df):
-        for col in ["Cement_Type", "Year", "Date", "SiO2", "CaO", "Strength_28D"]:
+        for col in ["Cement_Type", "Year", "Date", "SiO2", "CaO", "Strength_28D", "Strength_28D_Source"]:
             assert col in df.columns
 
     def test_cement_types(self, df):
@@ -44,6 +44,9 @@ class TestDatasetShape:
         for col in NUMERIC_COLS:
             if col in df.columns:
                 assert pd.api.types.is_float_dtype(df[col]), f"{col} not float"
+
+    def test_7d_strength_is_not_a_model_input(self, df):
+        assert "Strength_7D" not in df.columns
 
     def test_lsf_normalized_to_percent(self, df):
         # LSF is stored as a ratio in Excel (0.91-1.00) and must load as
@@ -94,16 +97,22 @@ def test_failed_refresh_preserves_existing_csv(tmp_path, monkeypatch):
 class TestStrengthNormalization:
     def test_strength_28d_present(self, df):
         valid = df["Strength_28D"].dropna()
-        assert len(valid) > 4000  # README: ~5,000 of ~11,500
+        assert len(valid) > 4000  # full historical target for reporting
+
+    def test_strength_28d_source_matches_target(self, df):
+        assert df.loc[df["Strength_28D"].notna(), "Strength_28D_Source"].notna().all()
+        assert df.loc[df["Strength_28D"].isna(), "Strength_28D_Source"].isna().all()
 
     def test_strength_28d_plausible_range(self, df):
         valid = df["Strength_28D"].dropna()
         assert valid.between(20, 80).mean() > 0.95  # MPa physical range
 
     def test_early_strength_merged(self, df):
-        # Either 2D or 3D must feed Strength_Early where 28D exists
+        # The model contract uses 2-day strength as its only early input.
         early = df[df["Strength_28D"].notna()]["Strength_Early"]
         assert early.notna().mean() > 0.5
+        assert df["Strength_Early"].equals(df["Strength_2D"])
+        assert "Strength_3D" not in df.columns
 
 
 class TestMlTrainingFrame:
@@ -119,7 +128,22 @@ class TestMlTrainingFrame:
     def test_has_enough_samples(self, df):
         for t in CEMENT_TYPES:
             frame = ml_training_frame(df, t)
-            assert len(frame) > 1000, f"{t} too few training rows: {len(frame)}"
+            minimum = 100 if t == "OPC" else 1000
+            assert len(frame) > minimum, f"{t} too few training rows: {len(frame)}"
 
     def test_excluded_years_constant(self):
         assert ML_EXCLUDED_YEARS == {2019}
+
+
+def test_strength_source_uses_latest_authoritative_column(tmp_path):
+    source = tmp_path / "source.csv"
+    pd.DataFrame([
+        {"Year": 2024, "Cement_Type": "OPC", "Date": "2024-01-01", "28 day": 42.0, "28 days": 41.0},
+        {"Year": 2024, "Cement_Type": "OPC", "Date": "2024-01-02", "28 day": None, "28 days": 41.0},
+    ]).to_csv(source, index=False)
+
+    prepared = load_and_prepare(str(source))
+
+    assert prepared["Strength_28D"].tolist() == [42.0, 41.0]
+    assert prepared["Strength_28D_Source"].tolist() == ["28 day", "28 days"]
+    assert prepared["Strength_28D_ML"].tolist() == [41.0, 41.0]

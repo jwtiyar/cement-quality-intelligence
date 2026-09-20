@@ -42,6 +42,12 @@ def client():
     return ApiClient(app)
 
 
+@pytest.fixture(autouse=True)
+def disable_optional_typesafe(monkeypatch):
+    """Keep API assertions deterministic even when the user has a local key."""
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
+
 BASE_MATERIALS = {
     "limestone": {"SiO2": 3.0, "Al2O3": 0.8, "Fe2O3": 0.5, "CaO": 52.0, "MgO": 0.5, "Na2O": 0.05, "K2O": 0.1, "SO3": 0.1, "LOI": 42.0, "H2O": 2.0},
     "shale": {"SiO2": 60.0, "Al2O3": 16.0, "Fe2O3": 7.0, "CaO": 3.0, "MgO": 2.0, "Na2O": 0.3, "K2O": 2.0, "SO3": 0.5, "LOI": 5.0, "H2O": 8.0},
@@ -164,6 +170,8 @@ class TestPredictEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert "prediction" in body
+        assert body["predictionSource"] == "recent_mean"
+        assert "mlPrediction" in body
         assert "confidence" in body
         assert body["typesafe"]["enabled"] is False
 
@@ -194,6 +202,32 @@ class TestChatEndpoint:
             "history": [{"role": "admin", "content": "hello"}],
         })
         assert resp.status_code == 422
+
+    def test_bad_provider_rejected_422(self, client):
+        resp = client.post("/api/chat", json={"message": "hi", "provider": "unknown"})
+        assert resp.status_code == 422
+
+    def test_codex_provider_uses_rag_prompt_without_gemini_key(self, client, monkeypatch):
+        captured = {}
+
+        async def fake_ask_codex(prompt):
+            captured["prompt"] = prompt
+            return "Codex document answer", "Codex test model"
+
+        monkeypatch.setattr("routes.ask_codex", fake_ask_codex)
+        resp = client.post("/api/chat", json={
+            "message": "What does the manual say about LSF?",
+            "provider": "codex",
+            "history": [{"role": "user", "content": "We are checking raw mix."}],
+        })
+
+        assert resp.status_code == 200
+        assert resp.json()["response"] == "Codex document answer"
+        assert resp.json()["provider"] == "codex"
+        assert resp.json()["model"] == "Codex test model"
+        assert "REFERENCE MANUALS & TECHNICAL STANDARDS" in captured["prompt"]
+        assert "We are checking raw mix." in captured["prompt"]
+        assert "What does the manual say about LSF?" in captured["prompt"]
 
     def test_invalid_typesafe_probability_rejected_422(self, client):
         resp = client.post("/api/chat", json={

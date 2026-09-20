@@ -6,7 +6,8 @@ from typing import Any
 
 import pandas as pd
 import xgboost as xgb
-from sklearn.metrics import r2_score
+import numpy as np
+from sklearn.metrics import mean_absolute_error, r2_score
 
 try:
     from sklearn.metrics import root_mean_squared_error as _rmse_fn
@@ -19,7 +20,7 @@ from data_prep import CEMENT_TYPES, ML_EXCLUDED_YEARS, ml_training_frame
 
 ML_FEATURES = [
     "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
-    "Strength_Early", "Early_Strength_Days", "Fineness",
+    "Strength_Early", "Fineness",
 ]
 
 MIN_TRAIN_SAMPLES = 100
@@ -43,9 +44,16 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
     for c_type in CEMENT_TYPES:
         print(f"Training XGBoost Regressor for {c_type} 28-day strength...")
         df_sub = ml_training_frame(df, c_type)
-        df_ml = df_sub[ML_FEATURES + ["Strength_28D", "Date_str"]].dropna()
+        if "Strength_28D_Source" not in df_sub.columns:
+            # Keep small synthetic callers and older prepared frames compatible.
+            df_sub = df_sub.copy()
+            df_sub["Strength_28D_Source"] = "unknown"
+        df_ml = df_sub[ML_FEATURES + ["Strength_28D", "Date_str", "Strength_28D_Source"]].dropna()
 
         r2, rmse = 0.0, 0.0
+        validation_mae = None
+        baseline_mae = None
+        model_beats_baseline = False
         feature_importances: dict[str, float] = {}
         feature_averages = (
             {feat: float(df_ml[feat].mean()) for feat in ML_FEATURES}
@@ -54,17 +62,19 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         )
 
         date_min = date_max = val_date_min = val_date_max = None
+        recent_average = None
         if not df_ml.empty and "Date_str" in df_ml.columns:
+            df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
             valid_dates = df_ml["Date_str"].dropna()
             if not valid_dates.empty:
                 date_min = str(valid_dates.min())
                 date_max = str(valid_dates.max())
+                recent_average = float(df_ml["Strength_28D"].tail(min(100, len(df_ml))).mean())
 
         if len(df_ml) >= MIN_TRAIN_SAMPLES:
             # Chronological split: train on the earliest 80% of records,
             # validate on the most recent 20%. The model predicts the future,
             # so validation must never leak future rows into training.
-            df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
             split_idx = int(len(df_ml) * 0.8)
             X = df_ml[ML_FEATURES]
             y = df_ml["Strength_28D"]
@@ -88,6 +98,10 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             y_pred = model.predict(X_test)
             r2 = float(r2_score(y_test, y_pred))
             rmse = float(_rmse_fn(y_test, y_pred))
+            validation_mae = float(mean_absolute_error(y_test, y_pred))
+            recent_baseline = float(y_train.tail(min(100, len(y_train))).mean())
+            baseline_mae = float(mean_absolute_error(y_test, np.full(len(y_test), recent_baseline)))
+            model_beats_baseline = validation_mae < baseline_mae
 
             models[c_type] = model
             feature_importances = {
@@ -97,13 +111,21 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         else:
             print(f"[{c_type}] Not enough 28-day records to train ({len(df_ml)} rows).")
 
-        confidence = model_confidence(r2)
+        confidence = model_confidence(r2) if model_beats_baseline else "chemistry_only"
         ml_data[c_type] = {
             "r2": round(r2, 3),
             "rmse": round(rmse, 2),
+            "validationMae": round(validation_mae, 3) if validation_mae is not None else None,
+            "recentBaselineMae": round(baseline_mae, 3) if baseline_mae is not None else None,
+            "modelBeatsRecentBaseline": model_beats_baseline,
             "importances": feature_importances,
             "averages": feature_averages,
+            "recentAverage": round(recent_average, 3) if recent_average is not None else None,
             "trainSamples": int(len(df_ml)),
+            "targetSourceCounts": {
+                str(source): int(count)
+                for source, count in df_ml["Strength_28D_Source"].value_counts().items()
+            },
             "excludedYears": sorted(ML_EXCLUDED_YEARS),
             "strengthDateRange": {"min": date_min, "max": date_max},
             "validationDateRange": {"min": val_date_min, "max": val_date_max},

@@ -3,84 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cement Quality Intelligence & ML Predictor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2">
+    <meta name="description" content="Cement laboratory results, strength estimates, raw-mix calculations, and reference search.">
+    <meta name="theme-color" content="#111716">
+    <title>Cement Lab</title>
+    <script>
+        (() => {
+            const preference = localStorage.getItem('cementTheme') || 'system';
+            const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.dataset.themeResolved = dark ? 'dark' : 'light';
+        })();
+    </script>
+    <link rel="stylesheet" href="style.css?v=4">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="background-orbs">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-    </div>
-
+    <a class="skip-link" href="#mainContent">Skip to content</a>
     <div class="container">
-        <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-            <div>
-                <h1>Cement Quality <span>Intelligence</span> & ML</h1>
-                <p>14-Year Data Analysis & Predictive XGBoost Engine</p>
+        <header class="app-header">
+            <div class="brand-block">
+                <span class="brand-mark" aria-hidden="true">CL</span>
+                <div>
+                    <h1>Cement Lab</h1>
+                    <p>Quality results, strength estimates, and raw-mix calculations</p>
+                </div>
             </div>
-            <button id="btnSync" class="btn-predict" style="width: auto; padding: 0.8rem 1.5rem; font-size: 1rem; margin: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                🔄 Sync Live Excel Data
-            </button>
+            <div class="header-controls">
+                <label class="theme-control" for="themeSelector">
+                    <span>Theme</span>
+                    <select id="themeSelector" class="glass-select" aria-label="Color theme">
+                        <option value="system">System</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                    </select>
+                </label>
+                <button id="btnSync" class="btn-predict header-action">Refresh data</button>
+            </div>
         </header>
+        <div id="appNotice" class="app-notice" role="status" aria-live="polite" hidden></div>
 
         <!-- Anomaly Alert Banner -->
         <div id="anomaly_banner" style="display: none; background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-            <h3 style="color: #ef4444; font-size: 1.1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">⚠️ Data Anomalies & Typos Detected</h3>
+            <h3 style="color: #ef4444; font-size: 1.1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">Check these data issues</h3>
             <div id="anomaly_text" style="color: #e2e8f0; font-size: 0.95rem; line-height: 1.5;"></div>
         </div>
 
-        <!-- Summary Statistics Cards -->
-        <div class="summary-cards">
-            <div class="card glass">
-                <h3>Total Records</h3>
-                <p id="totalRecords" class="value animate-pop">---</p>
-            </div>
-            <div class="card glass">
-                <h3>Avg 28-Day Strength</h3>
-                <p id="avgStrength" class="value animate-pop">--- <span class="unit">MPa</span></p>
-            </div>
-            <div class="card glass">
-                <h3>Avg C3S Content</h3>
-                <p id="avgC3S" class="value animate-pop">--- <span class="unit">%</span></p>
-            </div>
-            <div class="card glass">
-                <h3>Years Analyzed</h3>
-                <p id="yearsCoverage" class="value animate-pop">---</p>
-            </div>
-        </div>
-
-        <!-- Dashboard Layout -->
-
         <!-- Tab Navigation -->
-        <div class="tabs-container" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
-            <button class="btn-predict tab-btn" id="tabBtnAnalytics" onclick="switchTab('analytics')" style="flex: 1; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);">📊 Historical Analytics</button>
-            <button class="btn-predict tab-btn" id="tabBtnAI" onclick="switchTab('ai')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">🤖 AI Mix Optimizer</button>
-            <button class="btn-predict tab-btn" id="tabBtnRawMix" onclick="switchTab('rawmix')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">🧪 Raw Mix Design</button>
-            <button class="btn-predict tab-btn" id="tabBtnChat" onclick="switchTab('chat')" style="flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;">📖 AI Assistant & Manuals</button>
-        </div>
+        <nav class="tabs-container" aria-label="Main sections" role="tablist">
+            <button class="tab-btn is-active" id="tabBtnAnalytics" onclick="switchTab('analytics')" role="tab" aria-selected="true" aria-controls="tabAnalytics">Overview</button>
+            <button class="tab-btn" id="tabBtnAI" onclick="switchTab('ai')" role="tab" aria-selected="false" aria-controls="tabAI">Strength estimate</button>
+            <button class="tab-btn" id="tabBtnRawMix" onclick="switchTab('rawmix')" role="tab" aria-selected="false" aria-controls="tabRawMix">Raw mix</button>
+            <button class="tab-btn" id="tabBtnChat" onclick="switchTab('chat')" role="tab" aria-selected="false" aria-controls="tabChat">Assistant</button>
+        </nav>
+
+        <main id="mainContent">
 
         <!-- Analytics Tab -->
-        <div id="tabAnalytics" style="display: block;">
+        <div id="tabAnalytics" class="tab-panel" style="display: block;" role="tabpanel" aria-labelledby="tabBtnAnalytics">
+            <div class="summary-cards" aria-label="Dataset summary">
+                <div class="card glass"><h3>Records</h3><p id="totalRecords" class="value animate-pop">---</p></div>
+                <div class="card glass"><h3>Average 28-day strength</h3><p id="avgStrength" class="value animate-pop">--- <span class="unit">MPa</span></p></div>
+                <div class="card glass"><h3>Average C₃S</h3><p id="avgC3S" class="value animate-pop">--- <span class="unit">%</span></p></div>
+                <div class="card glass"><h3>Years covered</h3><p id="yearsCoverage" class="value animate-pop">---</p></div>
+            </div>
             <div class="dashboard-grid">
 
                 <!-- Interactive Parameter Graph -->
                 <div class="chart-container glass">
                     <div class="chart-header">
-                        <h2>Parameter Evolution (2013-2026)</h2>
+                        <h2>Historical trends</h2>
                         <div class="selector-wrapper" style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
-                            <label for="paramSelector">Visualize: </label>
+                            <label for="paramSelector">Parameter</label>
                             <select id="paramSelector" class="glass-select">
                                 <option value="Strength_28D">28-Day Compressive Strength</option>
-                                <option value="Strength_Early">Early (2D/3D) Strength</option>
+                                <option value="Strength_Early">2-Day Strength</option>
                                 <option value="C3S">Tricalcium Silicate (C3S %)</option>
                                 <option value="CaO">Lime (CaO %)</option>
                                 <option value="Fineness">Fineness / Blaine (cm²/g)</option>
                                 <option value="LSF">Lime Saturation Factor (LSF)</option>
                             </select>
-                            <button id="btnExportCSV" class="btn-predict" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem; margin: 0; background: linear-gradient(135deg, #64748b 0%, #475569 100%); box-shadow: none;" title="Download full dataset as CSV">📥 Export CSV</button>
+                            <button id="btnExportCSV" class="btn-predict secondary-action" title="Download the full dataset as CSV">Export CSV</button>
                         </div>
                     </div>
                     <p id="trendChartSubtitle" style="font-size: 0.8rem; color: #f59e0b; margin: -0.5rem 0 0.8rem 0; display: none;"></p>
@@ -92,7 +93,7 @@
                 <!-- Monthly Analysis Graph -->
                 <div class="chart-container glass">
                     <div class="chart-header">
-                        <h2>Daily Monthly Analysis</h2>
+                        <h2>Daily results</h2>
                         <div class="selector-wrapper" style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
                             <select id="monthlyYear" class="glass-select">
                                 <!-- Populated dynamically -->
@@ -128,8 +129,8 @@
 
                 <!-- Correlation Grid -->
                 <div class="correlation-container glass span-full">
-                    <h2>Chemical & Physical Correlation Matrix (OPC)</h2>
-                    <p class="section-desc">A value close to +1.0 indicates a strong positive relationship, while -1.0 shows a strong negative relationship.</p>
+                    <h2>OPC correlations</h2>
+                    <p class="section-desc">Values near +1 move together. Values near -1 move in opposite directions.</p>
                     <div class="correlation-grid-wrapper">
                         <table id="correlationTable">
                             <!-- Populated dynamically -->
@@ -139,8 +140,7 @@
 
                 <!-- Cement Type Distribution -->
                 <div class="chart-container glass">
-                    <h2>Dataset Distribution</h2>
-                    <p class="section-desc">Proportion of records by cement type across the entire dataset.</p>
+                    <h2>Records by cement type</h2>
                     <div class="chart-wrapper" style="height: 300px;">
                         <canvas id="distributionChart"></canvas>
                     </div>
@@ -148,8 +148,8 @@
 
                 <!-- Lowest strength days -->
                 <div class="anomalies-container glass">
-                    <h2>Lowest 28-Day Strength Days</h2>
-                    <p class="section-desc">Ten lowest recorded 28-day compressive strength results across all cement types.</p>
+                    <h2>Lowest 28-day results</h2>
+                    <p class="section-desc">The ten lowest results in the dataset.</p>
                     <div class="table-responsive">
                         <table id="anomalyTable">
                             <thead>
@@ -171,20 +171,20 @@
         </div> <!-- End tabAnalytics -->
 
         <!-- AI Tab -->
-        <div id="tabAI" style="display: none;">
+        <div id="tabAI" class="tab-panel" style="display: none;" role="tabpanel" aria-labelledby="tabBtnAI">
             <div class="dashboard-grid">
                 <!-- AI Predictor Panel -->
                 <div class="predictor-container glass">
-                    <h2>XGBoost 28D Strength Predictor</h2>
+                    <h2>28-day strength estimate</h2>
                     
                     <!-- Search Date Block -->
                     <div class="search-record-block" style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--glass-border);">
-                        <h3 style="font-size: 0.95rem; margin-bottom: 0.8rem; color: var(--accent); font-weight: 500;">Load Historical Record by Date</h3>
+                        <h3 style="font-size: 0.95rem; margin-bottom: 0.8rem; color: var(--accent); font-weight: 500;">Load a lab record</h3>
                         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                             <div style="display: inline-block;">
                                 <input type="date" id="searchDate" class="glass-select" style="padding: 0.4rem 0.6rem; font-size: 0.9rem; width: 150px; text-align: center; color-scheme: dark;" value="">
                             </div>
-                            <button type="button" id="btnLoadRecord" class="btn-predict" style="width: auto; padding: 0.4rem 1rem; font-size: 0.9rem; margin-top: 0;">Load Record</button>
+                            <button type="button" id="btnLoadRecord" class="btn-predict compact-action">Load record</button>
                         </div>
                         <div id="searchFeedback" style="font-size: 0.85rem; margin-top: 0.5rem; color: #10b981; display: none;"></div>
                     </div>
@@ -195,10 +195,10 @@
                         <span id="modelConfidence" style="display:block; margin-top:0.4rem; font-size:0.85rem; color:#94a3b8;">--</span>
                         <span id="modelTrainInfo" style="display:block; margin-top:0.25rem; font-size:0.8rem; color:#64748b;">--</span>
                     </div>
-                    <p class="section-desc">Input parameters below to simulate changes and receive AI advice.</p>
+                    <p class="section-desc">Enter the current chemistry and early test result. The estimate remains decision support and includes its validation status.</p>
                     
                     <div style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.8rem;">
-                        <label for="predictCementType" style="font-size: 0.9rem; color: var(--text-secondary); font-weight: 500;">Cement Type:</label>
+                        <label for="predictCementType" style="font-size: 0.9rem; color: var(--text-secondary); font-weight: 500;">Cement type</label>
                         <select id="predictCementType" class="glass-select" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
                             <option value="OPC">OPC (Ordinary Portland)</option>
                             <option value="SRC">SRC (Sulfate Resisting)</option>
@@ -232,12 +232,8 @@
                             <input type="number" id="opt_SO3" step="0.01">
                         </div>
                         <div class="form-group">
-                            <label>Early Strength (MPa)</label>
+                            <label>2-Day Strength (MPa)</label>
                             <input type="number" id="opt_Strength_Early" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label>Early Test Days (2 or 3)</label>
-                            <input type="number" id="opt_Early_Strength_Days" step="1">
                         </div>
                         <div class="form-group">
                             <label>Fineness / Blaine (cm²/g)</label>
@@ -246,7 +242,7 @@
                     </div>
 
                     <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border)">
-                        <h4 style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 1px;">Calculated Chemistry (Bogue)</h4>
+                        <h4 style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">Calculated clinker chemistry</h4>
                         <div style="display: flex; flex-wrap: wrap; gap: 1rem; font-size: 1rem; margin-bottom: 1.5rem; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.8rem; justify-content: space-between;">
                             <div><span style="color: #38bdf8;">C3S:</span> <br><span id="opt_res_C3S">--</span>%</div>
                             <div><span style="color: #38bdf8;">C2S:</span> <br><span id="opt_res_C2S">--</span>%</div>
@@ -259,30 +255,30 @@
                     </div>
 
                     <div id="predictionResult" class="prediction-result">
-                        <span class="label">AI Predicted 28-Day Strength:</span>
+                        <span class="label">Estimated 28-day strength</span>
                         <span class="value" id="opt_res_strength" style="color: #10b981;">--</span>
                     </div>
 
                     <div id="expectedDateBox" class="prediction-result" style="margin-top: 0.8rem; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); display: none;">
-                        <span class="label">Expected 28-Day Break Date:</span>
+                        <span class="label">Expected test date</span>
                         <span class="value" id="expectedBreakDate" style="color: #10b981; font-size: 1.1rem;">--</span>
                     </div>
 
                     <div id="actualResultBox" class="prediction-result" style="margin-top: 0.8rem; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.2); display: none;">
-                        <span class="label">Actual 28-Day Strength (Lab):</span>
+                        <span class="label">Actual 28-day strength</span>
                         <span class="value" id="actualStrengthVal" style="color: var(--accent);">--</span>
                         <span class="unit">MPa</span>
                     </div>
 
                     <div id="opt_advice" style="margin-top: 1rem; padding: 1rem; background: rgba(56, 189, 248, 0.1); border-left: 4px solid #38bdf8; border-radius: 4px; font-size: 0.9rem; line-height: 1.5; color: #e2e8f0;">
-                        Load a historical record above or modify parameters to start simulating and receiving live clinkering feedback.
+                        Load a lab record or enter values to calculate an estimate.
                     </div>
                 </div>
 
                 <!-- Feature Importances -->
                 <div class="chart-container glass">
-                    <h2>Model Feature Importances (XGBoost)</h2>
-                    <p class="section-desc" id="importanceDesc">Relative influence of each parameter on the strength prediction.</p>
+                    <h2>Model details</h2>
+                    <p class="section-desc" id="importanceDesc">Relative influence of each input on the estimate.</p>
                     <div class="chart-wrapper" style="height: 300px;">
                         <canvas id="importanceChart"></canvas>
                     </div>
@@ -291,25 +287,25 @@
         </div>
 
         <!-- Raw Mix Design Tab -->
-        <div id="tabRawMix" style="display: none;">
+        <div id="tabRawMix" class="tab-panel" style="display: none;" role="tabpanel" aria-labelledby="tabBtnRawMix">
             <div class="dashboard-grid">
                 <!-- Raw Materials Inputs -->
                 <div class="predictor-container glass span-full" style="padding: 1.8rem;">
-                    <h2>Raw Material Compositions (%)</h2>
-                    <p class="section-desc" style="margin-bottom: 0.8rem;">Input the dry chemistry of your raw materials and their moisture content.</p>
+                    <h2>Raw material chemistry</h2>
+                    <p class="section-desc" style="margin-bottom: 0.8rem;">Enter dry chemistry and moisture for each material.</p>
                     
                     <!-- Cement Type selection in Raw Mix Design -->
                     <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.2rem; background: rgba(255,255,255,0.03); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                        <label for="raw_cement_type" style="font-size: 0.9rem; color: var(--accent); font-weight: 500; min-width: 130px;">Target Cement Type:</label>
-                        <select id="raw_cement_type" class="glass-select" style="padding: 0.3rem 0.5rem; flex: 1; font-family: 'Outfit'; font-size: 0.9rem; color: #fff; cursor: pointer;">
-                            <option value="OPC" selected>OPC (Ordinary Portland Cement) — uses Slag</option>
-                            <option value="SBC">SBC (Slag Blend Cement) — uses Slag</option>
-                            <option value="SRC">SRC (Sulfate Resisting Cement) — uses Iron Ore</option>
+                        <label for="raw_cement_type" style="font-size: 0.9rem; color: var(--accent); font-weight: 500; min-width: 130px;">Cement type</label>
+                        <select id="raw_cement_type" class="glass-select" style="padding: 0.3rem 0.5rem; flex: 1; font-size: 0.9rem; color: #fff; cursor: pointer;">
+                            <option value="OPC" selected>OPC (slag)</option>
+                            <option value="SBC">SBC (slag)</option>
+                            <option value="SRC">SRC (iron ore)</option>
                         </select>
                     </div>
                     
                     <!-- Main Layout for Table, Inputs, and Proportions -->
-                    <div style="display: grid; grid-template-columns: minmax(0, 50%) minmax(0, 25%) minmax(0, 25%); gap: 1.5rem; align-items: stretch;">
+                    <div class="rawmix-workspace" style="display: grid; grid-template-columns: minmax(0, 50%) minmax(0, 25%) minmax(0, 25%); gap: 1.5rem; align-items: stretch;">
                         <!-- Column 1: Table -->
                         <div style="overflow-x: auto; margin-bottom: 1.5rem;">
                         <table class="rawmix-input-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
@@ -418,8 +414,8 @@
                         <div style="display: flex; flex-direction: column; gap: 1.2rem; height: 100%;">
                             <!-- Mode Switcher Tabs -->
                             <div class="rawmix-mode-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.8rem;">
-                                <button type="button" id="raw_mode_solve" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); font-family: 'Outfit', sans-serif; font-weight: 500; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">Solve for Targets</button>
-                                <button type="button" id="raw_mode_calc" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); border-radius: 6px; font-family: 'Outfit', sans-serif; font-weight: 500; color: var(--text-secondary); cursor: pointer;">Calculate from Recipe</button>
+                                <button type="button" id="raw_mode_solve" class="tab-btn is-active" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0;">Solve targets</button>
+                                <button type="button" id="raw_mode_calc" class="tab-btn" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; margin: 0;">Check recipe</button>
                             </div>
 
                             <!-- Target Setpoints / Recipe Inputs and Kiln Fuel Settings -->
@@ -474,7 +470,7 @@
                                 <!-- Kiln Fuel Settings -->
                                 <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px;">
                                     <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin: 0 0 0.8rem 0; display: flex; align-items: center; gap: 0.5rem;">
-                                        <span>🔥</span> HFO Combustion Settings
+                                        HFO settings
                                     </h3>
                                     <div class="input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; align-items: center;">
                                         <div class="form-group" style="text-align: center;">
@@ -494,7 +490,7 @@
                             </div>
 
                             <div style="text-align: right; margin-top: auto;">
-                                <button type="button" id="btnCalculateRawMix" class="btn-predict" style="width: 100%; padding: 0.6rem; font-size: 1rem; margin-top: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">Calculate Proportions</button>
+                                <button type="button" id="btnCalculateRawMix" class="btn-predict" style="width: 100%; padding: 0.6rem; font-size: 1rem; margin-top: 0;">Calculate proportions</button>
                             </div>
                         </div> <!-- End Column 2 -->
 
@@ -522,11 +518,11 @@
                 </div>
                 <!-- Results Card -->
                 <div class="predictor-container glass span-full" style="padding: 1.8rem;">
-                    <h2 id="rawmix_results_title">Calculated Proportions & Clinker Chemistry</h2>
-                    <p class="section-desc" style="margin-bottom: 1.2rem;">Dry/wet proportion results and expected clinker quality indicators.</p>
+                    <h2 id="rawmix_results_title">Raw-mix result</h2>
+                    <p class="section-desc" style="margin-bottom: 1.2rem;">Wet and dry proportions with expected clinker chemistry.</p>
                     
                     <div id="rawmix_results_block" style="display: none;">
-                        <div style="display: grid; grid-template-columns: 13fr 10fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="rawmix-result-grid" style="display: grid; grid-template-columns: 13fr 10fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                             <!-- Expected Clinker Composition -->
                             <div>
                                 <h3 style="color: var(--accent); font-weight: 500; font-size: 1rem; margin-bottom: 0.8rem;">Expected Clinker Chemistry</h3>
@@ -576,65 +572,73 @@
                     </div>
                     
                     <div id="rawmix_prompt_block" style="text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
-                        <span style="font-size: 3rem; display: block; margin-bottom: 1rem;">🧪</span>
-                        Fill in your raw materials and click <strong>"Calculate Feeder Proportions"</strong> to run FLS raw mix proportions.
+                        Enter material chemistry and select <strong>Calculate proportions</strong>.
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- AI Assistant & RAG Tab -->
-        <div id="tabChat" style="display: none;">
-            <div class="dashboard-grid" style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+        <div id="tabChat" class="tab-panel" style="display: none;" role="tabpanel" aria-labelledby="tabBtnChat">
+            <div class="dashboard-grid assistant-grid">
                 <!-- Chat Window (Left Side, taking most space) -->
-                <div class="chart-container glass" style="flex: 2; min-width: 450px; display: flex; flex-direction: column; height: 600px; padding: 1.5rem; box-sizing: border-box;">
+                <div class="chart-container glass assistant-panel">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.8rem;">
-                        <h2 style="margin: 0; font-size: 1.25rem;">💬 AI Process & Quality Assistant</h2>
-                        <button id="btnClearChat" class="btn-predict" style="width: auto; padding: 0.3rem 0.8rem; font-size: 0.85rem; margin: 0; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;">Clear Chat</button>
+                        <div>
+                            <h2 style="margin: 0; font-size: 1.25rem;">Plant assistant</h2>
+                            <div style="display: flex; align-items: center; gap: 0.55rem; margin-top: 0.45rem; flex-wrap: wrap;">
+                                <label for="aiProvider" style="color: #94a3b8; font-size: 0.78rem;">Model</label>
+                                <select id="aiProvider" class="glass-select" style="min-height: 32px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background-color: #0f172a; color: #e2e8f0;">
+                                    <option value="gemini">Gemini 3.8 Flash</option>
+                                    <option value="codex">Codex — ChatGPT account</option>
+                                </select>
+                                <span id="activeModelLabel" style="color: #94a3b8; font-size: 0.78rem;">Selected: Gemini 3.8 Flash</span>
+                            </div>
+                        </div>
+                        <button id="btnClearChat" class="btn-predict" style="width: auto; padding: 0.3rem 0.8rem; font-size: 0.85rem; margin: 0;">Clear chat</button>
                     </div>
                     
                     <!-- Messages Area -->
                     <div id="chatHistory" style="flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--glass-border); border-radius: 8px; background: rgba(15, 23, 42, 0.4); margin-bottom: 1rem;">
-                        <div style="align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);">
-                            Hello! I am your AI Process & Quality Assistant. I have read the cement chemistry textbooks, equipment manuals, and ASTM standards in your <strong>knowledge_base</strong> folder. 
-                            <br><br>
-                            How can I help you troubleshoot your raw mix or strength properties today?
+                        <div class="chat-message model">
+                            Ask about plant results or search the reference documents.
                         </div>
                     </div>
                     
                     <!-- Chat Input -->
                     <div style="display: flex; gap: 0.8rem;">
-                        <input type="text" id="chatInput" class="glass-select" style="flex: 1; background: rgba(15, 23, 42, 0.8); padding: 0.8rem 1.2rem; font-size: 0.95rem; border-radius: 8px;" placeholder="Ask about kiln operations, ASTM standards, raw mix calculation...">
-                        <button id="btnSendChat" class="btn-predict" style="width: auto; padding: 0.8rem 1.5rem; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);">Send</button>
+                        <input type="text" id="chatInput" class="glass-select" style="flex: 1; background: rgba(15, 23, 42, 0.8); padding: 0.8rem 1.2rem; font-size: 0.95rem; border-radius: 8px;" placeholder="Ask about results, standards, or raw mix…" autocomplete="off">
+                        <button id="btnSendChat" class="btn-predict compact-action">Send</button>
                     </div>
                 </div>
 
                 <!-- Knowledge Base Sidebar (Right Side) -->
-                <div class="predictor-container glass" style="flex: 1; min-width: 300px; display: flex; flex-direction: column; height: 600px; padding: 1.5rem; box-sizing: border-box;">
-                    <h2 style="font-size: 1.25rem;">📖 Knowledge Base Index</h2>
-                    <p class="section-desc" style="margin-bottom: 1rem;">Scan and vector-index your PDF standards, operations manuals, and textbooks.</p>
+                <aside class="predictor-container glass documents-panel">
+                    <h2 style="font-size: 1.25rem;">Documents</h2>
+                    <p class="section-desc" style="margin-bottom: 1rem;">Reference manuals and standards used for this conversation.</p>
                     
-                    <button id="btnRebuildRAG" class="btn-predict" style="width: 100%; padding: 0.8rem; font-size: 0.95rem; margin-bottom: 1.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                        🔄 Rebuild Vector Index
+                    <button id="btnRebuildRAG" class="btn-predict" style="width: 100%; padding: 0.8rem; font-size: 0.95rem; margin-bottom: 1.5rem;">
+                        Update document index
                     </button>
                     
                     <div id="ragStatus" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 1rem;">
-                        Status: <strong>Index Available</strong> (Incremental Sync supported)
+                        <strong>Index status has not been checked.</strong>
                     </div>
 
                     <!-- Referenced Sources list from last question -->
                     <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-                        <h3 style="font-size: 0.9rem; color: var(--accent); margin-bottom: 0.5rem;">Sources Cited in Last Query:</h3>
+                        <h3 style="font-size: 0.9rem; color: var(--accent); margin-bottom: 0.5rem;">Sources for the last answer</h3>
                         <div id="citedSources" style="flex: 1; overflow-y: auto; padding: 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div style="text-align: center; padding: 2rem 0; color: #64748b;">No query run yet. Ask a question to see citations.</div>
+                            <div style="text-align: center; padding: 2rem 0; color: #64748b;">Sources will appear after an answer cites a document.</div>
                         </div>
                     </div>
-                </div>
+                </aside>
             </div>
         </div>
 
+        </main>
     </div>
 
-    <script src="script.js?v=8"></script>
+    <script src="script.js?v=11"></script>
 </body>
 </html>

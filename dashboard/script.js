@@ -6,10 +6,67 @@ let dashboardData = null;
 let latestPredictionContext = null;
 
 const CEMENT_COLORS = {
-    OPC: { border: '#38bdf8', bg: 'rgba(56, 189, 248, 0.08)' },
-    SRC: { border: '#10b981', bg: 'transparent' },
-    SBC: { border: '#8b5cf6', bg: 'transparent' }
+    OPC: { border: '#52a895', bg: 'rgba(82, 168, 149, 0.08)' },
+    SRC: { border: '#d6a75e', bg: 'transparent' },
+    SBC: { border: '#7fa4bd', bg: 'transparent' }
 };
+
+const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+
+function themeToken(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function resolvedTheme(preference) {
+    return preference === 'system' ? (systemTheme.matches ? 'dark' : 'light') : preference;
+}
+
+function syncChartTheme() {
+    if (typeof Chart === 'undefined') return;
+    const text = themeToken('--text-secondary');
+    const grid = themeToken('--chart-grid');
+    const tooltip = themeToken('--chart-tooltip');
+    Chart.defaults.color = text;
+    Chart.defaults.borderColor = grid;
+
+    [trendChart, monthlyChart, distributionChart, importanceChart].filter(Boolean).forEach(chart => {
+        const plugins = chart.options.plugins || {};
+        if (plugins.legend?.labels) plugins.legend.labels.color = text;
+        if (plugins.tooltip) plugins.tooltip.backgroundColor = tooltip;
+        Object.values(chart.options.scales || {}).forEach(scale => {
+            if (scale.grid?.display !== false) scale.grid.color = grid;
+            if (scale.ticks) scale.ticks.color = text;
+            if (scale.title) scale.title.color = text;
+        });
+        chart.update('none');
+    });
+}
+
+function applyTheme(preference, persist = true) {
+    document.documentElement.dataset.themeResolved = resolvedTheme(preference);
+    if (persist) localStorage.setItem('cementTheme', preference);
+    const selector = document.getElementById('themeSelector');
+    if (selector) selector.value = preference;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = themeToken('--bg-color');
+    syncChartTheme();
+}
+
+const savedTheme = localStorage.getItem('cementTheme') || 'system';
+applyTheme(savedTheme, false);
+document.getElementById('themeSelector')?.addEventListener('change', event => applyTheme(event.target.value));
+systemTheme.addEventListener('change', () => {
+    if ((localStorage.getItem('cementTheme') || 'system') === 'system') applyTheme('system', false);
+});
+
+function showAppNotice(message, tone = 'info') {
+    const notice = document.getElementById('appNotice');
+    if (!notice) return;
+    notice.textContent = message;
+    notice.dataset.tone = tone;
+    notice.hidden = false;
+    notice.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
 
 // Escape untrusted text before any innerHTML use (CSV values, AI output)
 function escapeHtml(s) {
@@ -86,33 +143,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSync) {
         btnSync.addEventListener('click', async () => {
             const originalText = btnSync.innerHTML;
-            btnSync.innerHTML = '⏳ Extracting...';
+            btnSync.textContent = 'Refreshing…';
             btnSync.disabled = true;
             try {
                 const res = await fetch('/api/refresh', { method: 'POST' });
                 if (res.ok) {
                     const data = await res.json();
-                    btnSync.innerHTML = '✅ Synced!';
+                    btnSync.textContent = 'Data refreshed';
                     
                     if (data.new_records && data.new_records.length > 0) {
-                        let msg = `Success! Fetched ${data.new_records.length} new daily reports:\n\n`;
+                        let msg = `Added ${data.new_records.length} daily reports.\n`;
                         const samples = data.new_records.slice(0, 10).map(r => `• ${r.date} (${r.type})`).join('\n');
                         msg += samples;
-                        if (data.new_records.length > 10) msg += `\n...and ${data.new_records.length - 10} more.`;
-                        alert(msg);
+                        if (data.new_records.length > 10) msg += `\nAnd ${data.new_records.length - 10} more.`;
+                        showAppNotice(msg, 'success');
                     } else {
-                        alert('Sync complete! The sheets were scanned but no new daily reports were found.');
+                        showAppNotice('Data is current. No new daily reports were found.', 'success');
                     }
                     
                     window.location.reload();
                 } else {
-                    btnSync.innerHTML = '❌ Error';
-                    alert('Failed to sync data.');
+                    btnSync.textContent = 'Refresh failed';
+                    showAppNotice('Could not refresh the dataset.', 'error');
                     setTimeout(() => { btnSync.innerHTML = originalText; btnSync.disabled = false; }, 2000);
                 }
             } catch (e) {
-                btnSync.innerHTML = '❌ Error';
-                alert('Network error syncing data.');
+                btnSync.textContent = 'Refresh failed';
+                showAppNotice('Could not connect to the data service.', 'error');
                 setTimeout(() => { btnSync.innerHTML = originalText; btnSync.disabled = false; }, 2000);
             }
         });
@@ -251,11 +308,11 @@ const eraLinePlugin = {
         // Label background
         const label = `28D data from ${eraYear} →`;
         ctx.setLineDash([]);
-        ctx.font = "500 11px 'Outfit', sans-serif";
+        ctx.font = "500 11px system-ui";
         const tw = ctx.measureText(label).width;
         const lx = x + 5;
         const ly = top + 14;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.fillStyle = themeToken('--chart-tooltip');
         ctx.beginPath();
         ctx.roundRect(lx - 3, ly - 11, tw + 8, 18, 4);
         ctx.fill();
@@ -266,15 +323,15 @@ const eraLinePlugin = {
         ctx.fillText(label, lx + 1, ly - 9);
 
         // Left-side label: sparse zone
-        const sparseLabel = '← Early strength (2D/3D)';
-        ctx.font = "400 10px 'Outfit', sans-serif";
+        const sparseLabel = '← 2-day strength';
+        ctx.font = "400 10px system-ui";
         const sw = ctx.measureText(sparseLabel).width;
         const sx = Math.max(chart.chartArea.left + 4, x - sw - 8);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+        ctx.fillStyle = themeToken('--chart-tooltip');
         ctx.beginPath();
         ctx.roundRect(sx - 3, ly - 11, sw + 8, 18, 4);
         ctx.fill();
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.fillStyle = themeToken('--text-secondary');
         ctx.fillText(sparseLabel, sx + 1, ly - 9);
 
         ctx.restore();
@@ -288,8 +345,8 @@ function initChart(param) {
     const ctx = document.getElementById('trendChart').getContext('2d');
     const paramData = dashboardData.trends.data[param];
     
-    Chart.defaults.color = '#94a3b8';
-    Chart.defaults.font.family = "'Outfit', sans-serif";
+    Chart.defaults.color = themeToken('--text-secondary');
+    Chart.defaults.font.family = "system-ui";
     
     _eraLineActive = (param === 'Strength_28D') && !!dashboardData.strength28Era;
 
@@ -299,7 +356,7 @@ function initChart(param) {
             borderColor: CEMENT_COLORS.OPC.border, backgroundColor: CEMENT_COLORS.OPC.bg,
             borderWidth: 3, tension: 0.35, fill: true, spanGaps: false,
             pointBackgroundColor: CEMENT_COLORS.OPC.border,
-            pointBorderColor: '#0f172a', pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7
+            pointBorderColor: themeToken('--panel'), pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7
         },
         {
             label: 'SRC (Sulfate Resisting)', data: paramData.SRC,
@@ -328,9 +385,9 @@ function initChart(param) {
                     labels: { padding: 15, usePointStyle: true, pointStyle: 'circle' }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                    titleFont: { size: 13, family: "'Outfit', sans-serif", weight: 'bold' },
-                    bodyFont: { size: 12, family: "'Outfit', sans-serif" },
+                    backgroundColor: themeToken('--chart-tooltip'),
+                    titleFont: { size: 13, family: "system-ui", weight: 'bold' },
+                    bodyFont: { size: 12, family: "system-ui" },
                     padding: 12,
                     cornerRadius: 8,
                     displayColors: true
@@ -338,10 +395,10 @@ function initChart(param) {
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false }
+                    grid: { color: themeToken('--chart-grid'), drawBorder: false }
                 },
                 y: {
-                    grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false },
+                    grid: { color: themeToken('--chart-grid'), drawBorder: false },
                     title: { display: true, text: getParamUnit(param), font: { size: 12 } }
                 }
             },
@@ -365,7 +422,7 @@ function updateChart(param) {
 function getParamUnit(param) {
     switch (param) {
         case 'Strength_28D': return '28-Day Strength (MPa)';
-        case 'Strength_Early': return 'Early (2D/3D) Strength (MPa)';
+        case 'Strength_Early': return '2-Day Strength (MPa)';
         case 'C3S': return 'Tricalcium Silicate (C3S %)';
         case 'CaO': return 'Lime (CaO %)';
         case 'Fineness': return 'Fineness / Blaine (cm²/g)';
@@ -381,7 +438,7 @@ function updateEraSubtitle(param) {
     const eraYear = dashboardData.strength28Era;
     if (param === 'Strength_28D' && eraYear) {
         subtitle.style.display = 'block';
-        subtitle.innerHTML = `⚠️ 28-day strength data becomes reliably available from <strong>${eraYear}</strong> onward. Earlier years have sparse 28D records (mostly 2D/3D/7D only).`;
+        subtitle.innerHTML = `⚠️ 28-day strength data becomes reliably available from <strong>${eraYear}</strong> onward. Earlier years have sparse 28D records (mostly 2-day tests only).`;
     } else {
         subtitle.style.display = 'none';
     }
@@ -447,7 +504,6 @@ function setupMLPredictor() {
         document.getElementById('opt_MgO').value = '';
         document.getElementById('opt_SO3').value = '';
         document.getElementById('opt_Strength_Early').value = '';
-        document.getElementById('opt_Early_Strength_Days').value = '';
         document.getElementById('opt_Fineness').value = '';
         
         document.getElementById('opt_res_C3S').innerText = '--';
@@ -580,14 +636,14 @@ function setupMLPredictor() {
     btnLoadRecord.addEventListener('click', () => {
         const dateVal = searchDateInput.value;
         if (!dateVal) {
-            alert('Please select a date first.');
+            showAppNotice('Select a date before loading a record.', 'error');
             return;
         }
         loadRecordForSelectedDateAndType();
     });
 
     // --- AI Mix Optimizer & Simulator Logic ---
-    const optInputs = ['opt_CaO', 'opt_SiO2', 'opt_Al2O3', 'opt_Fe2O3', 'opt_MgO', 'opt_SO3', 'opt_Strength_Early', 'opt_Early_Strength_Days', 'opt_Fineness'];
+    const optInputs = ['opt_CaO', 'opt_SiO2', 'opt_Al2O3', 'opt_Fe2O3', 'opt_MgO', 'opt_SO3', 'opt_Strength_Early', 'opt_Fineness'];
     
     function formatVal(val) {
         if (val === null || val === undefined || val === '') return '';
@@ -604,7 +660,6 @@ function setupMLPredictor() {
         document.getElementById('opt_MgO').value = formatVal(data.MgO);
         document.getElementById('opt_SO3').value = formatVal(data.SO3);
         document.getElementById('opt_Strength_Early').value = formatVal(data.Strength_Early);
-        document.getElementById('opt_Early_Strength_Days').value = formatVal(data.Early_Strength_Days) || '2';
         document.getElementById('opt_Fineness').value = formatVal(data.Fineness);
         runOptimizationSimulation();
     };
@@ -641,7 +696,6 @@ function setupMLPredictor() {
         const MgO = parseFloat(document.getElementById('opt_MgO').value) || 0;
         const SO3 = parseFloat(document.getElementById('opt_SO3').value) || 0;
         const Strength_Early = parseFloat(document.getElementById('opt_Strength_Early').value) || 0;
-        const Early_Strength_Days = parseFloat(document.getElementById('opt_Early_Strength_Days').value) || 2;
         const Fineness = parseFloat(document.getElementById('opt_Fineness').value) || 0;
 
         try {
@@ -665,13 +719,13 @@ function setupMLPredictor() {
             const reqData = {
                 Cement_Type: cType,
                 SiO2, Al2O3, Fe2O3, CaO, MgO, SO3,
-                Strength_Early, Early_Strength_Days, Fineness
+                Strength_Early, Fineness
             };
 
             let strengthHtml = '--';
             let advice = `<strong>Chemistry Engine:</strong><br>${chem.advice}`;
 
-            if (modelMeta.hasModel && modelMeta.confidence !== 'chemistry_only') {
+            if (modelMeta.hasModel) {
                 const res = await fetch('/api/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -696,7 +750,12 @@ function setupMLPredictor() {
                         document.getElementById('expectedDateBox').style.display = 'none';
                     } else {
                         strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
-                        advice += `<br><br><strong>${result.confidenceLabel}</strong> (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                        advice += `<br><br><strong>${result.confidenceLabel}</strong>`;
+                        if (result.predictionSource === 'recent_mean') {
+                            advice += `<br>Historical XGBoost held back; recent validation favored this baseline.`;
+                        } else {
+                            advice += ` (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                        }
                         if (decision.enabled) {
                             advice += `<br><strong>TypeSafe safe-to-show:</strong> ${(decision.probability * 100).toFixed(0)}%`;
                         }
@@ -713,8 +772,8 @@ function setupMLPredictor() {
                             } else {
                                 baseDateObj = new Date(lastLoadedRecordDate);
                             }
-                        } else if (Early_Strength_Days) {
-                            baseDateObj.setDate(baseDateObj.getDate() - Early_Strength_Days);
+                        } else {
+                            baseDateObj.setDate(baseDateObj.getDate() - 2);
                         }
                         baseDateObj.setDate(baseDateObj.getDate() + 28);
 
@@ -818,11 +877,11 @@ function initDistributionChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'right', labels: { color: '#94a3b8', font: { family: "'Outfit', sans-serif" } } },
+                legend: { position: 'right', labels: { color: themeToken('--text-secondary'), font: { family: "system-ui" } } },
                 tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                    titleFont: { family: "'Outfit', sans-serif" },
-                    bodyFont: { family: "'Outfit', sans-serif" }
+                    backgroundColor: themeToken('--chart-tooltip'),
+                    titleFont: { family: "system-ui" },
+                    bodyFont: { family: "system-ui" }
                 }
             },
             cutout: '70%'
@@ -859,9 +918,9 @@ function initImportanceChart(cType) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                    titleFont: { family: "'Outfit', sans-serif" },
-                    bodyFont: { family: "'Outfit', sans-serif" },
+                    backgroundColor: themeToken('--chart-tooltip'),
+                    titleFont: { family: "system-ui" },
+                    bodyFont: { family: "system-ui" },
                     callbacks: {
                         label: function(context) {
                             return context.parsed.y + '%';
@@ -872,13 +931,13 @@ function initImportanceChart(cType) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false },
-                    ticks: { color: '#94a3b8' },
-                    title: { display: true, text: 'Importance (%)', color: '#94a3b8' }
+                    grid: { color: themeToken('--chart-grid'), drawBorder: false },
+                    ticks: { color: themeToken('--text-secondary') },
+                    title: { display: true, text: 'Importance (%)', color: themeToken('--text-secondary') }
                 },
                 x: {
                     grid: { display: false, drawBorder: false },
-                    ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }
+                    ticks: { color: themeToken('--text-secondary'), maxRotation: 45, minRotation: 45 }
                 }
             }
         }
@@ -1003,9 +1062,9 @@ function renderMonthlyChart(data, param) {
                 plugins: {
                     legend: { position: 'top', labels: { usePointStyle: true, pointStyle: 'circle' } },
                     tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleFont: { family: "'Outfit', sans-serif" },
-                        bodyFont: { family: "'Outfit', sans-serif" },
+                        backgroundColor: themeToken('--chart-tooltip'),
+                        titleFont: { family: "system-ui" },
+                        bodyFont: { family: "system-ui" },
                         callbacks: {
                             title: (context) => `Day ${context[0].label}`
                         }
@@ -1013,12 +1072,12 @@ function renderMonthlyChart(data, param) {
                 },
                 scales: {
                     x: {
-                        grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false },
-                        title: { display: true, text: 'Day of Month', color: '#94a3b8' }
+                        grid: { color: themeToken('--chart-grid'), drawBorder: false },
+                        title: { display: true, text: 'Day of Month', color: themeToken('--text-secondary') }
                     },
                     y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false },
-                        title: { display: true, text: getParamUnit(param), color: '#94a3b8' }
+                        grid: { color: themeToken('--chart-grid'), drawBorder: false },
+                        title: { display: true, text: getParamUnit(param), color: themeToken('--text-secondary') }
                     }
                 },
                 interaction: { mode: 'index', intersect: false }
@@ -1027,31 +1086,51 @@ function renderMonthlyChart(data, param) {
     }
 }
 
-// Tab Switching Logic
-window.switchTab = function(tabName) {
-    const tabAnalytics = document.getElementById('tabAnalytics');
-    const tabAI = document.getElementById('tabAI');
-    const tabRawMix = document.getElementById('tabRawMix');
-    const tabChat = document.getElementById('tabChat');
-    
-    const btnAnalytics = document.getElementById('tabBtnAnalytics');
-    const btnAI = document.getElementById('tabBtnAI');
-    const btnRawMix = document.getElementById('tabBtnRawMix');
-    const btnChat = document.getElementById('tabBtnChat');
-
-    const activeStyle = "flex: 1; margin: 0; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);";
-    const inactiveStyle = "flex: 1; margin: 0; background: rgba(30, 41, 59, 0.8); border: 1px solid var(--glass-border); box-shadow: none;";
-
-    if (tabAnalytics) tabAnalytics.style.display = (tabName === 'analytics') ? 'block' : 'none';
-    if (tabAI) tabAI.style.display = (tabName === 'ai') ? 'block' : 'none';
-    if (tabRawMix) tabRawMix.style.display = (tabName === 'rawmix') ? 'block' : 'none';
-    if (tabChat) tabChat.style.display = (tabName === 'chat') ? 'block' : 'none';
-
-    if (btnAnalytics) btnAnalytics.style = (tabName === 'analytics') ? activeStyle : inactiveStyle;
-    if (btnAI) btnAI.style = (tabName === 'ai') ? activeStyle : inactiveStyle;
-    if (btnRawMix) btnRawMix.style = (tabName === 'rawmix') ? activeStyle : inactiveStyle;
-    if (btnChat) btnChat.style = (tabName === 'chat') ? activeStyle : inactiveStyle;
+const tabNames = ['analytics', 'ai', 'rawmix', 'chat'];
+const tabElements = {
+    analytics: ['tabAnalytics', 'tabBtnAnalytics'],
+    ai: ['tabAI', 'tabBtnAI'],
+    rawmix: ['tabRawMix', 'tabBtnRawMix'],
+    chat: ['tabChat', 'tabBtnChat'],
 };
+
+window.switchTab = function(tabName, updateUrl = true) {
+    const selected = tabNames.includes(tabName) ? tabName : 'analytics';
+
+    tabNames.forEach(name => {
+        const [panelId, buttonId] = tabElements[name];
+        const panel = document.getElementById(panelId);
+        const button = document.getElementById(buttonId);
+        const active = name === selected;
+        if (panel) panel.style.display = active ? 'block' : 'none';
+        if (button) {
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', String(active));
+            button.tabIndex = active ? 0 : -1;
+        }
+    });
+
+    if (updateUrl && window.location.hash !== `#${selected}`) {
+        window.history.pushState({ tab: selected }, '', `#${selected}`);
+    }
+};
+
+window.addEventListener('popstate', () => {
+    window.switchTab(window.location.hash.slice(1), false);
+});
+
+window.switchTab(window.location.hash.slice(1) || 'analytics', false);
+
+document.querySelector('.tabs-container')?.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const current = tabNames.findIndex(name => tabElements[name][1] === document.activeElement.id);
+    const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? tabNames.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabNames.length) % tabNames.length;
+    window.switchTab(tabNames[next]);
+    document.getElementById(tabElements[tabNames[next]][1]).focus();
+});
 
 // FLS proportioning — server-side via /api/rawmix/calculate
 async function calculateRawMixProportions() {
@@ -1113,7 +1192,7 @@ async function calculateRawMixProportions() {
     for (const [name, comp] of Object.entries(materials)) {
         for (const [oxide, val] of Object.entries(comp)) {
             if (isNaN(val)) {
-                alert(`Please enter a valid numerical value for ${name} ${oxide}.`);
+                showAppNotice(`Enter a valid number for ${name} ${oxide}.`, 'error');
                 return;
             }
         }
@@ -1157,7 +1236,7 @@ async function calculateRawMixProportions() {
     })) {
         const val = parseFloat(document.getElementById(id).value);
         if (isNaN(val)) {
-            alert(`Please enter a valid numerical value for ${name}.`);
+            showAppNotice(`Enter a valid number for ${name}.`, 'error');
             return;
         }
     }
@@ -1170,7 +1249,7 @@ async function calculateRawMixProportions() {
         });
         const data = await res.json();
         if (!res.ok) {
-            alert(formatApiError(data.detail) || 'Calculation failed.');
+            showAppNotice(formatApiError(data.detail) || 'Calculation failed.', 'error');
             return;
         }
 
@@ -1259,7 +1338,7 @@ async function calculateRawMixProportions() {
         }
     } catch (err) {
         console.error('Calculation error:', err);
-        alert('An error occurred during calculations. Check console for details.');
+        showAppNotice('The calculation failed. Check the entered values and try again.', 'error');
     }
 }
 const rawMixCorrections = {
@@ -1330,20 +1409,13 @@ function setupRawMixCalculator() {
     if (btnSolve && btnCalc) {
         btnSolve.addEventListener('click', () => {
             rawMixMode = 'solve';
-            btnSolve.style.background = 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)';
-            btnSolve.style.color = '#fff';
-            btnSolve.style.border = 'none';
-            btnSolve.style.boxShadow = '0 4px 15px rgba(56, 189, 248, 0.3)';
-            
-            btnCalc.style.background = 'rgba(30, 41, 59, 0.8)';
-            btnCalc.style.color = 'var(--text-secondary)';
-            btnCalc.style.border = '1px solid var(--glass-border)';
-            btnCalc.style.boxShadow = 'none';
+            btnSolve.classList.add('is-active');
+            btnCalc.classList.remove('is-active');
 
             document.getElementById('rawmix_target_moduli_block').style.display = 'block';
             document.getElementById('rawmix_recipe_input_block').style.display = 'none';
-            btnCalculate.innerText = 'Calculate Feeder Proportions';
-            document.getElementById('rawmix_results_title').innerText = 'Calculated Proportions & Clinker Chemistry';
+            btnCalculate.innerText = 'Calculate proportions';
+            document.getElementById('rawmix_results_title').innerText = 'Raw-mix result';
             
             // Clear outputs
             document.getElementById('rawmix_results_block').style.display = 'none';
@@ -1353,20 +1425,13 @@ function setupRawMixCalculator() {
 
         btnCalc.addEventListener('click', () => {
             rawMixMode = 'recipe';
-            btnCalc.style.background = 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)';
-            btnCalc.style.color = '#fff';
-            btnCalc.style.border = 'none';
-            btnCalc.style.boxShadow = '0 4px 15px rgba(56, 189, 248, 0.3)';
-            
-            btnSolve.style.background = 'rgba(30, 41, 59, 0.8)';
-            btnSolve.style.color = 'var(--text-secondary)';
-            btnSolve.style.border = '1px solid var(--glass-border)';
-            btnSolve.style.boxShadow = 'none';
+            btnCalc.classList.add('is-active');
+            btnSolve.classList.remove('is-active');
 
             document.getElementById('rawmix_target_moduli_block').style.display = 'none';
             document.getElementById('rawmix_recipe_input_block').style.display = 'block';
-            btnCalculate.innerText = 'Calculate Resulting Moduli';
-            document.getElementById('rawmix_results_title').innerText = 'Recipe Evaluation & Expected Chemistry';
+            btnCalculate.innerText = 'Check recipe';
+            document.getElementById('rawmix_results_title').innerText = 'Recipe result';
             
             // Clear outputs
             document.getElementById('rawmix_results_block').style.display = 'none';
@@ -1508,33 +1573,52 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnRebuildRAG = document.getElementById("btnRebuildRAG");
     const ragStatus = document.getElementById("ragStatus");
     const citedSources = document.getElementById("citedSources");
+    const aiProvider = document.getElementById("aiProvider");
+    const activeModelLabel = document.getElementById("activeModelLabel");
 
     let history = [];
+
+    const providerLabels = {
+        gemini: "Gemini 3.8 Flash",
+        codex: "gpt-5.6-luna (medium) — ChatGPT account",
+    };
+    const savedProvider = localStorage.getItem("cementAiProvider");
+    if (aiProvider && providerLabels[savedProvider]) aiProvider.value = savedProvider;
+
+    function updateProviderLabel(label, prefix = "Selected") {
+        if (activeModelLabel) {
+            activeModelLabel.textContent = `${prefix}: ${label || providerLabels[aiProvider?.value]}`;
+        }
+    }
+
+    updateProviderLabel();
+    if (aiProvider) {
+        aiProvider.addEventListener("change", () => {
+            localStorage.setItem("cementAiProvider", aiProvider.value);
+            updateProviderLabel();
+        });
+    }
 
     // Clear history
     if (btnClearChat) {
         btnClearChat.addEventListener("click", () => {
             history = [];
             chatHistory.innerHTML = `
-                <div style="align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);">
-                    Hello! I am your AI Process & Quality Assistant. I have read the cement chemistry textbooks, equipment manuals, and ASTM standards in your <strong>knowledge_base</strong> folder. 
-                    <br><br>
-                    How can I help you troubleshoot your raw mix or strength properties today?
+                <div class="chat-message model">
+                    Ask about plant results or search the reference documents.
                 </div>
             `;
-            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">No query run yet. Ask a question to see citations.</div>`;
+            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: #64748b;">Sources will appear after an answer cites a document.</div>`;
         });
     }
 
     // Append a message bubble to chat
     function appendMessage(role, text) {
         const bubble = document.createElement("div");
+        bubble.className = `chat-message ${role}`;
         if (role === "user") {
-            bubble.style = "align-self: flex-end; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 0.8rem 1.2rem; border-radius: 12px 12px 0px 12px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05); color: #fff;";
             bubble.innerText = text;
         } else {
-            bubble.style = "align-self: flex-start; background: rgba(255, 255, 255, 0.05); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.05);";
-            
             // Render markdown-like formatting (bold, newlines) safely:
             // escape HTML first so AI-generated tags can never execute
             const escaped = escapeHtml(text);
@@ -1554,12 +1638,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         chatInput.value = "";
         appendMessage("user", query);
+        const provider = aiProvider?.value || "gemini";
+        btnSendChat.disabled = true;
+        btnSendChat.textContent = "Send · Thinking…";
 
         // Show typing indicator
         const typingIndicator = document.createElement("div");
         typingIndicator.id = "typingIndicator";
-        typingIndicator.style = "align-self: flex-start; background: rgba(255, 255, 255, 0.02); padding: 0.8rem 1.2rem; border-radius: 12px 12px 12px 0px; max-width: 85%; font-size: 0.95rem; color: #94a3b8; border: 1px dashed rgba(255,255,255,0.1);";
-        typingIndicator.innerText = "Thinking...";
+        typingIndicator.className = "chat-message model typing";
+        typingIndicator.innerText = "Thinking…";
         chatHistory.appendChild(typingIndicator);
         chatHistory.scrollTop = chatHistory.scrollHeight;
 
@@ -1567,7 +1654,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: query, history: history, prediction_context: latestPredictionContext })
+                body: JSON.stringify({
+                    message: query,
+                    history: history,
+                    prediction_context: latestPredictionContext,
+                    provider,
+                })
             });
 
             // Remove typing indicator
@@ -1576,12 +1668,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!res.ok) {
                 const errData = await res.json();
-                appendMessage("model", `<span style="color:#ef4444;">Error: ${errData.detail || 'Could not reach Gemini model'}</span>`);
+                appendMessage("model", `Error: ${errData.detail || `Could not reach ${providerLabels[provider]}`}`);
                 return;
             }
 
             const data = await res.json();
             appendMessage("model", data.response);
+            updateProviderLabel(data.model || providerLabels[provider], "Last response");
 
             // Update local history
             history.push({ role: "user", content: query });
@@ -1619,7 +1712,10 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error(err);
             const ind = document.getElementById("typingIndicator");
             if (ind) ind.remove();
-            appendMessage("model", `<span style="color:#ef4444;">Error connecting to server.</span>`);
+            appendMessage("model", "Error connecting to server.");
+        } finally {
+            btnSendChat.disabled = false;
+            btnSendChat.textContent = "Send";
         }
     }
 
@@ -1637,24 +1733,24 @@ document.addEventListener("DOMContentLoaded", () => {
         btnRebuildRAG.addEventListener("click", async () => {
             const originalText = btnRebuildRAG.innerText;
             btnRebuildRAG.disabled = true;
-            btnRebuildRAG.innerText = "Indexing Books (Please wait)...";
+            btnRebuildRAG.innerText = "Updating index…";
             btnRebuildRAG.style.opacity = "0.7";
-            ragStatus.innerHTML = `Status: <strong style="color:var(--accent);">Indexing PDF books... (Could take 1-2 mins depending on file sizes)</strong>`;
+            ragStatus.innerHTML = `<strong style="color:var(--accent);">Reading reference documents…</strong>`;
 
             try {
                 const res = await fetch("/api/rag/rebuild", { method: "POST" });
                 if (res.ok) {
-                    ragStatus.innerHTML = `Status: <strong style="color:#10b981;">Index Rebuilt & Synced!</strong>`;
-                    alert("RAG vector index has been successfully updated with new PDFs!");
+                    ragStatus.innerHTML = `<strong style="color:#69b88b;">Document index updated.</strong>`;
+                    showAppNotice("Document index updated.", "success");
                 } else {
                     const err = await res.json();
-                    ragStatus.innerHTML = `Status: <strong style="color:#ef4444;">Index Failed</strong>`;
-                    alert(`Indexing failed: ${err.detail || 'Unknown error'}`);
+                    ragStatus.innerHTML = `<strong style="color:#e0716f;">Index update failed.</strong>`;
+                    showAppNotice(`Index update failed: ${err.detail || 'Unknown error'}`, "error");
                 }
             } catch (err) {
                 console.error(err);
-                ragStatus.innerHTML = `Status: <strong style="color:#ef4444;">Connection Error</strong>`;
-                alert("Error connecting to server to build index.");
+                ragStatus.innerHTML = `<strong style="color:#e0716f;">Could not connect to the document service.</strong>`;
+                showAppNotice("Could not connect to the document service.", "error");
             } finally {
                 btnRebuildRAG.disabled = false;
                 btnRebuildRAG.innerText = originalText;

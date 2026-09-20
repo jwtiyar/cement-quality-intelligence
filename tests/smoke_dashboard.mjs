@@ -74,6 +74,19 @@ try {
   });
 
   await page.goto(BASE, { waitUntil: "load" });
+  if (await page.title() !== "Cement Lab") throw new Error("Dashboard title was not updated");
+  await page.selectOption("#themeSelector", "light");
+  if (await page.getAttribute("html", "data-theme-resolved") !== "light" || await page.evaluate(() => localStorage.getItem("cementTheme")) !== "light") {
+    throw new Error("Light theme was not applied and persisted");
+  }
+  await page.reload({ waitUntil: "load" });
+  if (await page.inputValue("#themeSelector") !== "light" || await page.getAttribute("html", "data-theme-resolved") !== "light") {
+    throw new Error("Saved light theme was not restored");
+  }
+  await page.selectOption("#themeSelector", "dark");
+  if (await page.getAttribute("html", "data-theme-resolved") !== "dark") throw new Error("Dark theme was not applied");
+  await page.selectOption("#themeSelector", "system");
+  if (await page.evaluate(() => localStorage.getItem("cementTheme")) !== "system") throw new Error("System theme was not persisted");
   await page.waitForSelector("#avgStrength", { timeout: 30_000 });
   await page.waitForFunction(
     () => document.getElementById("avgStrength").textContent.includes("MPa") &&
@@ -84,7 +97,21 @@ try {
   const avg = await page.textContent("#avgStrength");
   if (!avg) throw new Error("avgStrength panel never populated");
 
+  await page.focus("#tabBtnAnalytics");
+  await page.keyboard.press("ArrowRight");
+  if (new URL(page.url()).hash !== "#ai" || await page.getAttribute("#tabBtnAI", "aria-selected") !== "true") {
+    throw new Error("Keyboard tab navigation did not update URL and selected state");
+  }
+
+  await page.click("#tabBtnAI");
+  if (new URL(page.url()).hash !== "#ai" || await page.getAttribute("#tabBtnAI", "aria-selected") !== "true") {
+    throw new Error("Strength estimate tab did not update URL and selected state");
+  }
+
   await page.click("#tabBtnRawMix");
+  if (new URL(page.url()).hash !== "#rawmix" || await page.getAttribute("#tabBtnRawMix", "aria-selected") !== "true") {
+    throw new Error("Raw-mix tab did not update URL and selected state");
+  }
   await page.waitForFunction(
     () => getComputedStyle(document.querySelector(".tab-page") || document.body).display !== "none",
     { timeout: 10_000 },
@@ -112,21 +139,40 @@ try {
     { timeout: 30_000 },
   );
 
-  await page.route("**/api/chat", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      response: "Use the cited operating guidance.",
-      sources: [{ file: "kiln-guide.pdf", page: 12, score: 0.63, typesafeScore: 0.97 }],
-    }),
-  }));
+  await page.route("**/api/chat", (route) => {
+    if (route.request().postDataJSON().provider !== "codex") {
+      throw new Error("Selected assistant provider was not sent to the API");
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        response: "Use the cited operating guidance.",
+        provider: "codex",
+        model: "gpt-5.6-luna (medium)",
+        sources: [{ file: "kiln-guide.pdf", page: 12, score: 0.63, typesafeScore: 0.97 }],
+      }),
+    });
+  });
   await page.click("#tabBtnChat");
+  await page.selectOption("#aiProvider", "codex");
   await page.fill("#chatInput", "What affects clinker strength?");
   await page.click("#btnSendChat");
   await page.waitForFunction(
     () => document.getElementById("citedSources").textContent.includes("TypeSafe: 97%"),
     { timeout: 10_000 },
   );
+  if (!await page.textContent("#activeModelLabel").then((text) => text.includes("Last response: gpt-5.6-luna"))) {
+    throw new Error("Assistant did not show the model used for the last response");
+  }
+
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await mobile.goto(`${BASE}/#analytics`, { waitUntil: "load" });
+  const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  if (overflow > 1) throw new Error(`Mobile page overflows horizontally by ${overflow}px`);
+  await mobile.click("#tabBtnRawMix");
+  if (!await mobile.isVisible("#rawmix_prompt_block")) throw new Error("Raw-mix workspace is not available on mobile");
+  await mobile.close();
 
   if (errors.length) throw new Error(errors.join("\n"));
   console.log(`SMOKE-OK: page loaded, avgStrength=${avg.trim()}, raw-mix scores + RAG scores rendered`);
