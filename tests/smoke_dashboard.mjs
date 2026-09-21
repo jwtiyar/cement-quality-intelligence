@@ -18,8 +18,20 @@ let playwright;
 try {
   playwright = require("playwright");
 } catch {
-  console.error("Playwright is not installed. Run: npm install --save-dev playwright");
-  process.exit(1);
+  const fallbackPaths = [
+    "/home/jwty/node_modules/.pnpm/node_modules/playwright",
+    "/home/jwty/node_modules/playwright",
+  ];
+  for (const p of fallbackPaths) {
+    try {
+      playwright = require(p);
+      break;
+    } catch {}
+  }
+  if (!playwright) {
+    console.error("Playwright is not installed. Run: npm install --save-dev playwright");
+    process.exit(1);
+  }
 }
 
 const PORT = 8517;
@@ -74,7 +86,7 @@ try {
   });
 
   await page.goto(BASE, { waitUntil: "load" });
-  if (await page.title() !== "Cement Lab") throw new Error("Dashboard title was not updated");
+  if (await page.title() !== "Cement Quality Intelligence") throw new Error("Dashboard title was not updated");
   await page.selectOption("#themeSelector", "light");
   if (await page.getAttribute("html", "data-theme-resolved") !== "light" || await page.evaluate(() => localStorage.getItem("cementTheme")) !== "light") {
     throw new Error("Light theme was not applied and persisted");

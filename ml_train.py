@@ -72,51 +72,77 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 recent_average = float(df_ml["Strength_28D"].tail(min(100, len(df_ml))).mean())
 
         if len(df_ml) >= MIN_TRAIN_SAMPLES:
-            # Chronological split: train on the earliest 80% of records,
-            # validate on the most recent 20%. The model predicts the future,
-            # so validation must never leak future rows into training.
+            # Chronological split with calendar-aware 28-day curing delay:
+            # Predictions for validation samples are made when the sample is 2 days old.
+            # Training samples must have their 28-day strength test physically available
+            # at or before that prediction date (sample date + 28 days <= validation sample date + 2 days).
             split_idx = int(len(df_ml) * 0.8)
-            X = df_ml[ML_FEATURES]
-            y = df_ml["Strength_28D"]
-            X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
-            y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+            val_df = df_ml.iloc[split_idx:].copy()
+            val_start_date = pd.to_datetime(val_df["Date_str"].iloc[0])
+            pred_time = val_start_date + pd.Timedelta(days=2)
 
-            val_date_min = str(df_ml["Date_str"].iloc[split_idx])
-            val_date_max = str(df_ml["Date_str"].iloc[-1])
+            if "Availability_Date_28D" in df_ml.columns:
+                train_mask = pd.to_datetime(df_ml.iloc[:split_idx]["Availability_Date_28D"]) <= pred_time
+            else:
+                train_mask = pd.to_datetime(df_ml.iloc[:split_idx]["Date_str"]) + pd.Timedelta(days=28) <= pred_time
 
-            model = xgb.XGBRegressor(
-                n_estimators=150,
-                learning_rate=0.05,
-                max_depth=3,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                random_state=42,
-                n_jobs=1,
-            )
-            model.fit(X_train, y_train)
+            train_df = df_ml.iloc[:split_idx][train_mask].copy()
 
-            y_pred = model.predict(X_test)
-            r2 = float(r2_score(y_test, y_pred))
-            rmse = float(_rmse_fn(y_test, y_pred))
-            validation_mae = float(mean_absolute_error(y_test, y_pred))
-            recent_baseline = float(y_train.tail(min(100, len(y_train))).mean())
-            baseline_mae = float(mean_absolute_error(y_test, np.full(len(y_test), recent_baseline)))
-            model_beats_baseline = validation_mae < baseline_mae
+            val_date_min = str(val_df["Date_str"].iloc[0])
+            val_date_max = str(val_df["Date_str"].iloc[-1])
 
-            models[c_type] = model
-            feature_importances = {
-                feat: float(imp) for feat, imp in zip(ML_FEATURES, model.feature_importances_)
-            }
-            print(f"[{c_type}] Model trained! R2: {r2:.3f}, RMSE: {rmse:.2f} MPa, samples: {len(df_ml)}")
+            if len(train_df) >= 20:
+                X_train, y_train = train_df[ML_FEATURES], train_df["Strength_28D"]
+                X_test, y_test = val_df[ML_FEATURES], val_df["Strength_28D"]
+
+                model = xgb.XGBRegressor(
+                    n_estimators=150,
+                    learning_rate=0.05,
+                    max_depth=3,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    random_state=42,
+                    n_jobs=1,
+                )
+                model.fit(X_train, y_train)
+
+                y_pred = model.predict(X_test)
+                r2 = float(r2_score(y_test, y_pred))
+                rmse = float(_rmse_fn(y_test, y_pred))
+                validation_mae = float(mean_absolute_error(y_test, y_pred))
+
+                # Baseline: calculate using strictly the same calendar-available training samples
+                recent_baseline = float(y_train.tail(min(100, len(y_train))).mean())
+                y_base = np.full(len(y_test), recent_baseline)
+                baseline_mae = float(mean_absolute_error(y_test, y_base))
+                baseline_rmse = float(_rmse_fn(y_test, y_base))
+                baseline_r2 = float(r2_score(y_test, y_base))
+
+                # Promotion policy: Model must beat baseline MAE by at least 5% margin AND achieve R2 > 0.25
+                model_beats_baseline = (validation_mae <= baseline_mae * 0.95) and (r2 > 0.25)
+                models[c_type] = model
+                feature_importances = {
+                    feat: float(imp) for feat, imp in zip(ML_FEATURES, model.feature_importances_)
+                }
+                print(f"[{c_type}] Model trained. ML MAE: {validation_mae:.3f}, Base MAE: {baseline_mae:.3f}, Promoted: {model_beats_baseline}")
+            else:
+                print(f"[{c_type}] Insufficient training samples after calendar cutoff ({len(train_df)} rows).")
         else:
             print(f"[{c_type}] Not enough 28-day records to train ({len(df_ml)} rows).")
 
         confidence = model_confidence(r2) if model_beats_baseline else "chemistry_only"
+        # When model is not promoted, honestly report the baseline's own error measurements
+        reported_r2 = round(r2, 3) if model_beats_baseline else (round(baseline_r2, 3) if baseline_mae is not None else 0.0)
+        reported_rmse = round(rmse, 2) if model_beats_baseline else (round(baseline_rmse, 2) if baseline_mae is not None else 0.0)
+
         ml_data[c_type] = {
-            "r2": round(r2, 3),
-            "rmse": round(rmse, 2),
+            "r2": reported_r2,
+            "rmse": reported_rmse,
             "validationMae": round(validation_mae, 3) if validation_mae is not None else None,
             "recentBaselineMae": round(baseline_mae, 3) if baseline_mae is not None else None,
+            "recentBaselineRmse": round(baseline_rmse, 2) if baseline_mae is not None else None,
+            "modelR2": round(r2, 3),
+            "modelRmse": round(rmse, 2),
             "modelBeatsRecentBaseline": model_beats_baseline,
             "importances": feature_importances,
             "averages": feature_averages,
@@ -134,6 +160,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 "predictive": "Predictive model",
                 "exploratory": "Exploratory simulation",
                 "chemistry_only": "Chemistry guidance only — ML confidence low",
+                "insufficient_evidence": "Insufficient evidence for reliable validation",
             }[confidence],
             "hasModel": c_type in models,
         }

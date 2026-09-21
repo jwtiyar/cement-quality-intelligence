@@ -1,18 +1,20 @@
-"""FastAPI route handlers."""
+"""FastAPI route handlers with request-scoped state snapshots and timeout safety."""
 
 from __future__ import annotations
 
+import asyncio
 import calendar
 import os
 from typing import Any
 
+import anyio
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from chemistry import OxideAnalysis, analyze_clinker, lsf_advice
-from codex_provider import ask_codex
+from codex_provider import CodexProviderError, ask_codex
 from data_prep import default_csv_path
 from ml_train import ML_FEATURES
 from rawmix_solver import calculate_rawmix
@@ -30,16 +32,18 @@ router = APIRouter()
 
 @router.get("/api/data")
 async def get_data():
-    return state.data_cache
+    snapshot = state.get_snapshot()
+    return snapshot.data_cache
 
 
 @router.get("/api/record")
 async def get_record(date: str, type: str = "OPC"):
-    if state.df_global is None:
+    snapshot = state.get_snapshot()
+    if snapshot.df is None or snapshot.df.empty:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
     try:
         target_date = pd.to_datetime(date).strftime("%Y-%m-%d")
-        row = state.df_global[(state.df_global["Date_str"] == target_date) & (state.df_global["Cement_Type"] == type)]
+        row = snapshot.df[(snapshot.df["Date_str"] == target_date) & (snapshot.df["Cement_Type"] == type)]
         if row.empty:
             return {"found": False}
 
@@ -59,10 +63,11 @@ async def get_record(date: str, type: str = "OPC"):
 
 @router.get("/api/latest_date")
 async def get_latest_date(type: str = "OPC"):
-    if state.df_global is None:
+    snapshot = state.get_snapshot()
+    if snapshot.df is None or snapshot.df.empty:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
     try:
-        df_type = state.df_global[(state.df_global["Cement_Type"] == type) & state.df_global["Date_str"].notna()]
+        df_type = snapshot.df[(snapshot.df["Cement_Type"] == type) & snapshot.df["Date_str"].notna()]
         if df_type.empty:
             return {"found": False}
         latest_row = df_type.sort_values("Date_dt", ascending=False).iloc[0]
@@ -73,14 +78,15 @@ async def get_latest_date(type: str = "OPC"):
 
 @router.get("/api/monthly")
 async def get_monthly(year: int, month: int, param: str = "Strength_28D"):
-    if state.df_global is None:
+    snapshot = state.get_snapshot()
+    if snapshot.df is None or snapshot.df.empty:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
     try:
         _, num_days = calendar.monthrange(year, month)
         days = list(range(1, num_days + 1))
 
-        mask = (state.df_global["Date_dt"].dt.year == year) & (state.df_global["Date_dt"].dt.month == month)
-        df_month = state.df_global[mask].dropna(subset=[param, "Date_dt", "Cement_Type"]).copy()
+        mask = (snapshot.df["Date_dt"].dt.year == year) & (snapshot.df["Date_dt"].dt.month == month)
+        df_month = snapshot.df[mask].dropna(subset=[param, "Date_dt", "Cement_Type"]).copy()
         df_month["Day"] = df_month["Date_dt"].dt.day
         daily_avg = df_month.groupby(["Day", "Cement_Type"])[param].mean().reset_index()
 
@@ -123,27 +129,48 @@ async def chemistry_analyze(body: ChemistryAnalyzeRequest):
 @router.post("/api/predict")
 async def predict(body: PredictRequest):
     try:
+        snapshot = state.get_snapshot()
         c_type = body.Cement_Type
+        ml_meta = snapshot.data_cache.get("ml", {}).get(c_type, {})
 
-        if c_type not in state.xgb_models:
-            ml_info = state.data_cache.get("ml", {}).get(c_type, {})
+        if c_type not in snapshot.xgb_models or not ml_meta.get("hasModel", False):
+            # Fall back to recentAverage baseline if trained model is absent
+            if ml_meta.get("recentAverage") is not None:
+                pred = float(ml_meta["recentAverage"])
+                typesafe = {
+                    "enabled": False,
+                    "safe_to_show": None,
+                    "probability": None,
+                    "status": "not_reviewed",
+                }
+                return {
+                    "prediction": round(pred, 2),
+                    "prediction_source": "recent_mean",
+                    "predictionSource": "recent_mean",
+                    "mlPrediction": round(pred, 2),
+                    "confidence": ml_meta.get("confidence", "insufficient_evidence"),
+                    "confidenceLabel": ml_meta.get("confidenceLabel", "Recent baseline guidance"),
+                    "r2": ml_meta.get("r2", 0.0),
+                    "rmse": ml_meta.get("rmse", 0.0),
+                    "typesafe": typesafe,
+                }
             raise HTTPException(
                 status_code=400,
-                detail=f"No model for '{c_type}' ({ml_info.get('trainSamples', 0)} training rows)",
+                detail=f"No model or baseline for '{c_type}' ({ml_meta.get('trainSamples', 0)} training rows)",
             )
 
-        model = state.xgb_models[c_type]
+        model = snapshot.xgb_models[c_type]
         features_val = []
         for feat in ML_FEATURES:
             val = getattr(body, feat)
             if val is None:
-                val = state.data_cache["ml"][c_type]["averages"][feat]
+                val = ml_meta["averages"][feat]
             features_val.append(float(val))
 
         pred_df = pd.DataFrame([features_val], columns=ML_FEATURES)
         ml_prediction = float(model.predict(pred_df)[0])
-        ml_meta = state.data_cache["ml"][c_type]
-        use_recent_baseline = ml_meta["confidence"] == "chemistry_only"
+
+        use_recent_baseline = not ml_meta.get("modelBeatsRecentBaseline", False)
         pred = float(ml_meta["recentAverage"]) if use_recent_baseline and ml_meta.get("recentAverage") is not None else ml_prediction
         prediction_source = "recent_mean" if use_recent_baseline else "xgboost"
         confidence_label = (
@@ -151,7 +178,13 @@ async def predict(body: PredictRequest):
             if use_recent_baseline
             else ml_meta["confidenceLabel"]
         )
-        typesafe = {"enabled": False}
+
+        typesafe = {
+            "enabled": False,
+            "safe_to_show": None,
+            "probability": None,
+            "status": "not_reviewed",
+        }
         if not use_recent_baseline:
             typesafe = assess_prediction(
                 cement_type=c_type,
@@ -163,6 +196,7 @@ async def predict(body: PredictRequest):
 
         return {
             "prediction": round(pred, 2),
+            "prediction_source": prediction_source,
             "predictionSource": prediction_source,
             "mlPrediction": round(ml_prediction, 2),
             "confidence": ml_meta["confidence"],
@@ -194,38 +228,34 @@ async def rawmix_calculate(body: RawMixRequest):
 
 
 @router.post("/api/refresh")
-async def refresh_data():
-    """Re-scan Excel workbooks, rebuild CSV, retrain models in memory."""
+async def refresh_data(allow_deletions: bool = False):
+    """Transactional refresh: stage, validate completeness, retrain, atomic swap."""
     try:
-        from build_dataset import extract_data
+        timed_out = False
 
-        csv_path = default_csv_path()
-        old_keys: set[str] = set()
-        if os.path.exists(csv_path):
-            old_df = pd.read_csv(csv_path)
-            if not old_df.empty and "Date" in old_df.columns and "Cement_Type" in old_df.columns:
-                old_keys = {
-                    str(row["Date"]) + "_" + str(row["Cement_Type"])
-                    for _, row in old_df.iterrows()
-                }
+        def cancellation_check() -> bool:
+            return timed_out
 
-        extract_data()
+        async with asyncio.timeout(120.0):
+            snapshot = await state.refresh_dataset_transactional(
+                allow_deletions=allow_deletions,
+                cancellation_check=cancellation_check,
+            )
 
-        new_records = []
-        if os.path.exists(csv_path):
-            new_df = pd.read_csv(csv_path)
-            if not new_df.empty and "Date" in new_df.columns and "Cement_Type" in new_df.columns:
-                for _, row in new_df.iterrows():
-                    key = str(row["Date"]) + "_" + str(row["Cement_Type"])
-                    if key not in old_keys:
-                        new_records.append({"date": row["Date"], "type": row["Cement_Type"]})
-
-        state.reload_from_csv(csv_path)
+        global rag_index
+        rag_index = None  # Force RAG index to reload synchronized data on next chat
         return {
             "status": "success",
-            "new_records": new_records,
-            "dataset": state.data_cache.get("dataset", {}),
+            "dataset": snapshot.data_cache.get("dataset", {}),
+            "dataset_version": snapshot.dataset_version,
+            "records": len(snapshot.df),
         }
+    except TimeoutError:
+        timed_out = True
+        raise HTTPException(
+            status_code=504,
+            detail="Dataset refresh timed out (120s limit). Live dataset was preserved without changes.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -239,9 +269,9 @@ async def export_csv():
     with open(csv_path, "rb") as csv_file:
         return Response(
             content=csv_file.read(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=ALL_CEMENT_DATA.csv"},
-    )
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=ALL_CEMENT_DATA.csv"},
+        )
 
 
 # Helper to load .env in routes.py
@@ -262,9 +292,11 @@ def load_env(paths: list[str] | None = None) -> None:
                     val = val.strip().strip("'").strip('"')
                     os.environ.setdefault(key.strip(), val)
 
+
 load_env()
 
 rag_index = None
+
 
 def get_rag_index():
     global rag_index
@@ -273,7 +305,7 @@ def get_rag_index():
         if os.path.exists(index_path):
             try:
                 import pickle
-                with open(index_path, 'rb') as f:
+                with open(index_path, "rb") as f:
                     candidate = pickle.load(f)
                 if not isinstance(candidate, dict) or not {"chunks", "vectorizer", "tfidf_matrix"} <= set(candidate):
                     print("RAG index has unexpected structure; ignoring")
@@ -285,8 +317,9 @@ def get_rag_index():
 
 
 def ml_reliability_context(prediction_context=None) -> str:
+    snapshot = state.get_snapshot()
     lines = []
-    for cement_type, meta in sorted(state.data_cache.get("ml", {}).items()):
+    for cement_type, meta in sorted(snapshot.data_cache.get("ml", {}).items()):
         lines.append(
             f"{cement_type}: {meta.get('confidenceLabel', meta.get('confidence', 'unknown'))}; "
             f"validation R² {meta.get('r2', 'n/a')}, RMSE {meta.get('rmse', 'n/a')} MPa."
@@ -296,23 +329,46 @@ def ml_reliability_context(prediction_context=None) -> str:
         lines.append("No optimizer prediction is attached to this chat request.")
     else:
         review = prediction_context.typesafe
-        review_text = "TypeSafe unavailable"
-        if review.enabled:
-            probability = f"{review.probability:.0%}" if review.probability is not None else "unknown probability"
-            review_text = f"TypeSafe safe-to-show={review.safe_to_show} ({probability})"
-        status = "HELD FOR QUALIFIED REVIEW" if review.enabled and not review.safe_to_show else "shown as decision support"
+        if review.status == "rejected" or review.safe_to_show is False:
+            review_text = (
+                f"TypeSafe safe-to-show=False ({review.probability:.0%})"
+                if review.probability is not None
+                else "TypeSafe safe-to-show=False"
+            )
+            status = "HELD FOR QUALIFIED REVIEW"
+        elif review.status == "approved" or review.safe_to_show is True:
+            prob_str = f" ({review.probability:.0%})" if review.probability is not None else ""
+            review_text = f"TypeSafe safe-to-show=True{prob_str}"
+            status = "APPROVED FOR DECISION SUPPORT"
+        else:
+            review_text = "TypeSafe safe-to-show=not_reviewed"
+            status = "UNREVIEWED GUIDANCE"
+
         lines.append(
-            f"Latest optimizer result: {prediction_context.cement_type} {prediction_context.prediction:.2f} MPa; "
-            f"{prediction_context.confidence_label}; validation R² {prediction_context.r2}, "
-            f"RMSE {prediction_context.rmse} MPa; {review_text}; status: {status}."
+            f"Latest optimizer result: {prediction_context.cement_type} {prediction_context.prediction:.2f} MPa "
+            f"(source: {prediction_context.prediction_source}); {prediction_context.confidence_label}; "
+            f"validation R² {prediction_context.r2}, RMSE {prediction_context.rmse} MPa; "
+            f"{review_text}; status: {status}."
         )
 
     lines.append(
-        "Treat chemistry_only and held results as unreliable strength predictions, and exploratory results as uncertain. "
+        "Treat chemistry_only, unreviewed, and held results as unreliable strength predictions, and exploratory results as uncertain. "
         "Explain their validation limits; "
         "never present them as production recommendations. TypeSafe is advisory; deterministic chemistry and plant controls remain authoritative."
     )
     return "\n".join(lines)
+
+
+def _call_gemini_sync(api_key: str, formatted_history: list, prompt: str) -> str:
+    from google import genai
+    client = genai.Client(api_key=api_key)
+    chat_session = client.chats.create(
+        model="gemini-3.8-flash",
+        history=formatted_history,
+    )
+    response = chat_session.send_message(message=prompt)
+    return response.text
+
 
 @router.post("/api/chat")
 async def chat(body: ChatRequest):
@@ -323,33 +379,30 @@ async def chat(body: ChatRequest):
         if not message:
             raise HTTPException(status_code=400, detail="Empty message")
 
+        snapshot = state.get_snapshot()
         index = get_rag_index()
         retrieved_contexts = []
         sources = []
 
         if index and index.get("chunks") and index.get("vectorizer") is not None and index.get("tfidf_matrix") is not None:
-            # 1. Transform query
             vectorizer = index["vectorizer"]
             tfidf_matrix = index["tfidf_matrix"]
             query_vec = vectorizer.transform([message])
-
-            # 2. Compute similarity
             similarities = np.dot(tfidf_matrix, query_vec.T).toarray().flatten()
 
-            # Get top 5
             top_k = min(5, len(similarities))
             top_indices = np.argsort(similarities)[::-1][:top_k]
 
             candidates = []
             for idx in top_indices:
                 score = float(similarities[idx])
-                if score > 0.05: # Minimum similarity threshold
+                if score > 0.05:
                     chunk = index["chunks"][idx]
                     candidates.append({
                         "text": chunk["text"],
                         "file": chunk["source"],
                         "page": chunk["page"],
-                        "score": round(score, 3)
+                        "score": round(score, 3),
                     })
 
             for candidate in rerank_contexts(message, candidates):
@@ -361,10 +414,12 @@ async def chat(body: ChatRequest):
                     **({"typesafeScore": candidate["typesafe_score"]} if "typesafe_score" in candidate else {}),
                 })
 
-        # Format the system instruction
-        context_str = "\n\n".join([f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}" for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))])
-        
-        live_summary = state.get_live_dataset_summary()
+        context_str = "\n\n".join([
+            f"Document {i+1} (Source: {src['file']}, Page {src['page']}):\n{txt}"
+            for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))
+        ])
+
+        live_summary = state.get_live_dataset_summary(snapshot.df)
         reliability_summary = ml_reliability_context(body.prediction_context)
 
         system_instruction = (
@@ -381,59 +436,57 @@ async def chat(body: ChatRequest):
             f"{context_str if context_str else 'No relevant reference manual chunks retrieved.'}\n"
             f"-----------------------------------------------------------------\n\n"
             "GUIDELINES FOR ANSWERING:\n"
-            "1. For questions asking about daily, weekly, monthly, or historical plant performance (e.g. 'how was strength in May 2026', "
-            "'how were the last 2 weeks', 'recent OPC strength', 'lowest strength days', 'monthly averages', 'strength trends', 'these days'):\n"
+            "1. For questions asking about daily, weekly, monthly, or historical plant performance:\n"
             "   - ALWAYS analyze and use the LIVE PLANT LABORATORY DATA provided above.\n"
-            "   - CRITICAL CURING RULE: Remember that 28-day strength takes 28 days to cure. Therefore, for the most recent weeks/months (like May/June 2026), 28-day strength tests show as 'Pending 28D Curing' because 28 days have not elapsed yet. When asked about recent 28D trends where data is pending, explicitly explain to the user that 28D results are still curing, and provide the fully-cured 28-day strength trend from the prior recent months (e.g., February, March, April 2026) instead!\n"
+            "   - CURING RULE: Only samples with production age under 28 days can physically be 'Pending 28D Curing'. Older records without 28D strength are unrecorded tests, not in-progress curing.\n"
             "   - Calculate exact averages, compare time periods, list specific high/low dates, and report actual figures (MPa, cm²/g, %).\n"
-            "   - Do NOT say 'I do not have information' for dates, weeks, or months present in the live laboratory data summary.\n"
             "2. For questions about cement chemistry, troubleshooting, standards, raw mix solver, or operational theory:\n"
             "   - Use the REFERENCE MANUALS & TECHNICAL STANDARDS and standard cement engineering principles.\n"
             "3. Be clear, precise, professional, and highlight actionable quality insights for plant engineers."
         )
-        
+
         prompt = f"{system_instruction}\n\nUser Question: {message}"
-        if body.provider == "codex":
-            conversation = "\n".join(
-                f"{'User' if turn.role == 'user' else 'Assistant'}: {turn.content}"
-                for turn in history
-            )
-            codex_prompt = (
-                f"{system_instruction}\n\n"
-                f"--- RECENT CONVERSATION ---\n{conversation or 'No earlier messages.'}\n"
-                f"---------------------------\n\nUser Question: {message}"
-            )
-            response_text, active_model = await ask_codex(codex_prompt)
-        else:
-            api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-            if not api_key:
-                raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
 
-            try:
-                from google import genai
-                from google.genai import types
-            except ImportError:
-                raise HTTPException(
-                    status_code=500,
-                    detail="google-genai package is missing. Run: pip install google-genai"
+        # Execute provider call with whole-request timeout of 35 seconds
+        async with asyncio.timeout(35.0):
+            if body.provider == "codex":
+                conversation = "\n".join(
+                    f"{'User' if turn.role == 'user' else 'Assistant'}: {turn.content}"
+                    for turn in history
                 )
+                codex_prompt = (
+                    f"{system_instruction}\n\n"
+                    f"--- RECENT CONVERSATION ---\n{conversation or 'No earlier messages.'}\n"
+                    f"---------------------------\n\nUser Question: {message}"
+                )
+                response_text, active_model = await ask_codex(codex_prompt)
+            else:
+                api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                if not api_key:
+                    raise HTTPException(status_code=500, detail="Gemini API Key is not configured on the server.")
 
-            client = genai.Client(api_key=api_key)
-            formatted_history = [
-                types.Content(
-                    role="user" if turn.role == "user" else "model",
-                    parts=[types.Part.from_text(text=turn.content)],
+                try:
+                    from google.genai import types
+                except ImportError:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="google-genai package is missing. Run: pip install google-genai",
+                    )
+
+                formatted_history = [
+                    types.Content(
+                        role="user" if turn.role == "user" else "model",
+                        parts=[types.Part.from_text(text=turn.content)],
+                    )
+                    for turn in history
+                ]
+
+                # Offload blocking synchronous Gemini call out of the async loop
+                response_text = await anyio.to_thread.run_sync(
+                    _call_gemini_sync, api_key, formatted_history, prompt
                 )
-                for turn in history
-            ]
-            chat_session = client.chats.create(
-                model="gemini-3.8-flash",
-                history=formatted_history,
-            )
-            response = chat_session.send_message(message=prompt)
-            response_text = response.text
-            active_model = "gemini-3.8-flash"
-        
+                active_model = "gemini-3.8-flash"
+
         # Deduplicate sources
         unique_sources = []
         seen = set()
@@ -442,23 +495,29 @@ async def chat(body: ChatRequest):
             if key not in seen:
                 seen.add(key)
                 unique_sources.append(src)
-                
+
         return {
             "response": response_text,
             "sources": unique_sources,
             "provider": body.provider,
             "model": active_model,
         }
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Assistant request timed out after 35 seconds.")
+    except CodexProviderError as e:
+        raise HTTPException(status_code=502, detail=f"Codex provider error: {e}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/api/rag/rebuild")
 async def rebuild_rag_index():
     try:
         global rag_index
-        # Force reload from disk next time get_rag_index() is called
         rag_index = None
-        
+
         from rag_index import rebuild_index
         rebuild_index()
         return {"status": "success", "message": "RAG index rebuilt successfully"}

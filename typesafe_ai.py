@@ -145,14 +145,27 @@ def assess_prediction(
         },
     )
     if response is None:
-        return {"enabled": False, "safe_to_show": True}
+        return {
+            "enabled": False,
+            "safe_to_show": None,
+            "probability": None,
+            "status": "not_reviewed",
+        }
 
     try:
         probability = round(float(response.nouls["safe_to_show"].noul), 3)
     except (AttributeError, KeyError, TypeError, ValueError):
-        return {"enabled": False, "safe_to_show": True}
+        return {
+            "enabled": False,
+            "safe_to_show": None,
+            "probability": None,
+            "status": "not_reviewed",
+        }
+
+    is_safe = probability >= 0.75
     return {
         "enabled": True,
-        "safe_to_show": probability >= 0.75,
+        "safe_to_show": is_safe,
         "probability": probability,
+        "status": "approved" if is_safe else "rejected",
     }

@@ -448,6 +448,36 @@ a:focus-visible {
     font-weight: 600;
 }
 
+.freshness-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.55rem;
+    background: var(--panel-header);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.freshness-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-nominal);
+    display: inline-block;
+}
+
+.freshness-badge.is-warning .freshness-dot {
+    background: var(--status-warning);
+}
+
+.freshness-badge.is-error .freshness-dot {
+    background: var(--status-alarm);
+}
+
 .app-notice {
     margin-bottom: 0.75rem;
     border: 1px solid var(--border-strong);

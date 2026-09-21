@@ -242,3 +242,51 @@ class TestInputValidation:
         }
         result = calculate_rawmix(payload)
         assert "AM" in result["clinker"]
+
+
+class TestPlantBenchmark:
+    def test_rawmix_design_4_elements_benchmark(self):
+        """Independently verifies the 4-material benchmark against rawmix/raw-mix-design-4 elemts.xlsx.
+        
+        Workbook targets: LSF 99.0, SM 2.4, AM 1.6 (no fuel ash/sulfur).
+        Workbook unrounded proportions:
+          Limestone: 82.4776%
+          Shale: 13.7854%
+          Iron Ore: 0.6482%
+          Bauxite: 3.0888%
+        """
+        materials = {
+            "limestone": {"SiO2": 3.24, "Al2O3": 0.79, "Fe2O3": 0.38, "CaO": 51.0, "MgO": 1.24, "K2O": 0.50, "Na2O": 0.20, "SO3": 0.10, "LOI": 42.48, "H2O": 0.0},
+            "shale": {"SiO2": 74.98, "Al2O3": 8.80, "Fe2O3": 6.20, "CaO": 0.98, "MgO": 0.24, "K2O": 0.30, "Na2O": 0.20, "SO3": 0.20, "LOI": 8.00, "H2O": 0.0},
+            "pyrite": {"SiO2": 9.16, "Al2O3": 2.00, "Fe2O3": 83.04, "CaO": 0.06, "MgO": 0.41, "K2O": 0.20, "Na2O": 0.10, "SO3": 0.07, "LOI": 4.65, "H2O": 0.0},
+            "sand": {"SiO2": 9.00, "Al2O3": 50.00, "Fe2O3": 14.00, "CaO": 5.50, "MgO": 0.50, "K2O": 0.10, "Na2O": 0.10, "SO3": 0.05, "LOI": 21.00, "H2O": 0.0},
+        }
+
+        payload = {
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": materials,
+            "targets": {"LSF": 99.0, "SM": 2.4, "AM": 1.6},
+            "hfo": {"heat": 0, "calorific": 9800, "sulfur": 0.0},
+        }
+
+        result = calculate_rawmix(payload)
+
+        assert result["feasibility"] == "feasible"
+        props = result["dry_proportions"]
+
+        # Within 0.1% tolerance of the plant workbook proportions
+        assert props["Limestone"] == pytest.approx(82.48, abs=0.1)
+        assert props["Clay"] == pytest.approx(13.79, abs=0.1)
+        assert props["Slag"] == pytest.approx(0.65, abs=0.1)  # Iron Ore / Pyrite
+        assert props["Sand"] == pytest.approx(3.09, abs=0.1)  # Bauxite corrector
+
+        # Total dry proportions sum to 100%
+        assert sum(props.values()) == pytest.approx(100.0, abs=0.01)
+
+        # Resulting clinker moduli match targets
+        clinker = result["clinker"]
+        assert clinker["LSF"] == pytest.approx(99.0, abs=0.1)
+        assert clinker["SM"] == pytest.approx(2.4, abs=0.05)
+        assert clinker["AM"] == pytest.approx(1.6, abs=0.05)
+

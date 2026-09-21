@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
+from typing_extensions import Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChemistryAnalyzeRequest(BaseModel):
@@ -74,14 +75,48 @@ class ChatTurn(BaseModel):
 
 class TypeSafePredictionReview(BaseModel):
     enabled: bool
-    safe_to_show: bool
+    safe_to_show: Optional[bool] = None
     probability: Optional[float] = Field(default=None, ge=0, le=1)
+    status: Literal["approved", "rejected", "not_reviewed"] = "not_reviewed"
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_status(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "status" not in data or data.get("status") is None:
+                if not data.get("enabled"):
+                    data["status"] = "not_reviewed"
+                elif data.get("safe_to_show") is True:
+                    data["status"] = "approved"
+                elif data.get("safe_to_show") is False:
+                    data["status"] = "rejected"
+        return data
+
+    @model_validator(mode="after")
+    def validate_safety_consistency(self) -> Self:
+        if self.status == "approved":
+            if not self.enabled:
+                raise ValueError("status 'approved' requires enabled=True")
+            if self.safe_to_show is not True:
+                raise ValueError("status 'approved' requires safe_to_show=True")
+        elif self.status == "rejected":
+            if not self.enabled:
+                raise ValueError("status 'rejected' requires enabled=True")
+            if self.safe_to_show is not False:
+                raise ValueError("status 'rejected' requires safe_to_show=False")
+        elif self.status == "not_reviewed":
+            if self.enabled:
+                raise ValueError("status 'not_reviewed' requires enabled=False")
+            if self.safe_to_show is not None:
+                raise ValueError("status 'not_reviewed' requires safe_to_show=None")
+        return self
 
 
 class PredictionContext(BaseModel):
     cement_type: Literal["OPC", "SRC", "SBC"]
     prediction: float
-    confidence: Literal["predictive", "exploratory", "chemistry_only"]
+    prediction_source: Literal["xgboost", "recent_mean", "chemistry_only"]
+    confidence: Literal["predictive", "exploratory", "chemistry_only", "insufficient_evidence"]
     confidence_label: str
     r2: float
     rmse: float = Field(ge=0)

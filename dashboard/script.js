@@ -249,6 +249,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         const response = await fetch('/api/data');
         if (!response.ok) throw new Error('API server returned error');
         dashboardData = await response.json();
+
+        // 0. Update Header Freshness Badge
+        const freshnessEl = document.getElementById('dataFreshnessText');
+        const freshnessContainer = document.getElementById('dataFreshness');
+        if (freshnessEl && dashboardData.dataset && dashboardData.dataset.freshness) {
+            const f = dashboardData.dataset.freshness;
+            const recDate = f.latestRecordDate || dashboardData.dataset.latestRecordDate;
+            const status = f.refreshStatus || 'idle';
+            const ver = (f.datasetVersion || '').substring(0, 7);
+
+            if (status === 'failed') {
+                freshnessEl.textContent = 'Data: Refresh Warning';
+                if (freshnessContainer) {
+                    freshnessContainer.className = 'freshness-badge is-warning';
+                    freshnessContainer.title = f.refreshError ? `Refresh failed: ${f.refreshError}` : 'Data refresh warning';
+                }
+            } else if (recDate) {
+                freshnessEl.textContent = `Data: ${recDate}${ver ? ' (v' + ver + ')' : ''}`;
+                if (freshnessContainer) {
+                    freshnessContainer.className = 'freshness-badge';
+                    freshnessContainer.title = `Latest laboratory record: ${recDate}${ver ? ' | Version: ' + ver : ''}`;
+                }
+            } else {
+                freshnessEl.textContent = 'Data: Active';
+                if (freshnessContainer) freshnessContainer.className = 'freshness-badge';
+            }
+        }
         
         // 1. Populate Summary Statistics
         document.getElementById('totalRecords').innerText = dashboardData.summary.totalRecords.toLocaleString();
@@ -822,16 +849,23 @@ function setupMLPredictor() {
                 const result = await res.json();
                 if (result.prediction !== undefined) {
                     const decision = result.typesafe || {};
+                    const normalizedReview = {
+                        enabled: Boolean(decision.enabled),
+                        safe_to_show: decision.safe_to_show !== undefined ? decision.safe_to_show : null,
+                        probability: decision.probability !== undefined ? decision.probability : null,
+                        status: decision.status || (decision.enabled ? (decision.safe_to_show ? "approved" : "rejected") : "not_reviewed")
+                    };
                     latestPredictionContext = {
                         cement_type: cType,
                         prediction: result.prediction,
+                        prediction_source: result.prediction_source || result.predictionSource || (result.confidence === 'chemistry_only' ? 'recent_mean' : 'xgboost'),
                         confidence: result.confidence,
                         confidence_label: result.confidenceLabel,
                         r2: result.r2,
                         rmse: result.rmse,
-                        typesafe: decision
+                        typesafe: normalizedReview
                     };
-                    if (decision.enabled && !decision.safe_to_show) {
+                    if (normalizedReview.status === 'rejected' || normalizedReview.safe_to_show === false) {
                         strengthHtml = `<span style="font-size:0.95rem;color:#f59e0b;">Held for qualified review — TypeSafe confidence ${(decision.probability * 100).toFixed(0)}%</span>`;
                         advice += `<br><br><strong>TypeSafe review required before using this estimate.</strong>`;
                         document.getElementById('expectedDateBox').style.display = 'none';
@@ -843,8 +877,10 @@ function setupMLPredictor() {
                         } else {
                             advice += ` (R² ${(result.r2 * 100).toFixed(0)}%)`;
                         }
-                        if (decision.enabled) {
-                            advice += `<br><strong>TypeSafe safe-to-show:</strong> ${(decision.probability * 100).toFixed(0)}%`;
+                        if (normalizedReview.status === 'approved') {
+                            advice += `<br><strong>TypeSafe status:</strong> Approved (${(normalizedReview.probability * 100).toFixed(0)}%)`;
+                        } else {
+                            advice += `<br><span style="font-size:0.85rem;color:var(--text-secondary);">Safety review: Not reviewed</span>`;
                         }
 
                         const dateBox = document.getElementById('expectedDateBox');

@@ -2,6 +2,7 @@ venv/
 __pycache__/
 *.pyc
 *.csv
+!tests/fixtures/*.csv
 *.xlsx
 *.xls
 *.xlsm

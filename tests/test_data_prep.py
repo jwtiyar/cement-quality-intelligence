@@ -135,7 +135,7 @@ class TestMlTrainingFrame:
         assert ML_EXCLUDED_YEARS == {2019}
 
 
-def test_strength_source_uses_latest_authoritative_column(tmp_path):
+def test_strength_source_unification_and_provenance(tmp_path):
     source = tmp_path / "source.csv"
     pd.DataFrame([
         {"Year": 2024, "Cement_Type": "OPC", "Date": "2024-01-01", "28 day": 42.0, "28 days": 41.0},
@@ -146,4 +146,4 @@ def test_strength_source_uses_latest_authoritative_column(tmp_path):
 
     assert prepared["Strength_28D"].tolist() == [42.0, 41.0]
     assert prepared["Strength_28D_Source"].tolist() == ["28 day", "28 days"]
-    assert prepared["Strength_28D_ML"].tolist() == [41.0, 41.0]
+    assert prepared["Strength_28D_ML"].tolist() == [42.0, 41.0]

@@ -41,25 +41,11 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     # The model contract is explicitly 2-day input → 28-day target.
     df["Strength_Early"] = df["Strength_2D"]
 
-    # Different workbook generations use different 28-day columns. Preserve
-    # the full row-wise target for charts and reports, but identify the source
-    # with the latest dated observation per cement type for ML training.
-    parsed_dates = pd.to_datetime(df["Date"], errors="coerce")
-    source_by_type: dict[str, str] = {}
-    for cement_type, group in df.groupby("Cement_Type", dropna=False):
-        candidates = []
-        for priority, col in enumerate(STRENGTH_28D_COLUMNS):
-            if col not in group.columns:
-                continue
-            values = pd.to_numeric(group[col].astype(str).str.replace(",", "."), errors="coerce")
-            valid = values.notna() & parsed_dates.loc[group.index].notna()
-            if valid.any():
-                latest_date = parsed_dates.loc[group.index[valid]].max()
-                latest_count = int((valid & (parsed_dates.loc[group.index] >= latest_date.replace(day=1))).sum())
-                candidates.append((latest_date, latest_count, -priority, col))
-        if candidates:
-            source_by_type[str(cement_type)] = max(candidates)[3]
-
+    # Different workbook generations use different 28-day column headers:
+    # 'Cmp.St. Mpa_28 day', '28 day', or '28 days'. All are subheaders under
+    # 'Cmp.St. Mpa' (IQS 5 / EN 196-1 mortar prism compressive strength in MPa).
+    # Analysis confirms zero row overlap across workbooks and identical physical ranges.
+    # Consolidate these into Strength_28D while recording column provenance.
     df["Strength_28D"] = np.nan
     df["Strength_28D_Source"] = pd.Series(pd.NA, index=df.index, dtype="string")
     for col in STRENGTH_28D_COLUMNS:
@@ -70,11 +56,8 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
         df.loc[mask, "Strength_28D"] = values[mask]
         df.loc[mask, "Strength_28D_Source"] = col
 
-    df["Strength_28D_ML"] = np.nan
-    for cement_type, source in source_by_type.items():
-        values = pd.to_numeric(df[source].astype(str).str.replace(",", "."), errors="coerce")
-        mask = (df["Cement_Type"].astype(str) == cement_type) & values.notna()
-        df.loc[mask, "Strength_28D_ML"] = values[mask]
+    # Strength_28D_ML mirrors the unified Strength_28D target
+    df["Strength_28D_ML"] = df["Strength_28D"]
 
     fin_cols = [c for c in df.columns if "SSB" in c]
     if fin_cols:
@@ -139,6 +122,13 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     df["Year"] = df["Year"].astype(int)
     df["Date_str"] = pd.to_datetime(df["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
     df["Date_dt"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Prediction_Date"] = df["Date_dt"] + pd.Timedelta(days=2)
+    if "Report_Date_28D" in df.columns:
+        df["Availability_Date_28D"] = pd.to_datetime(df["Report_Date_28D"], errors="coerce").fillna(
+            df["Date_dt"] + pd.Timedelta(days=28)
+        )
+    else:
+        df["Availability_Date_28D"] = df["Date_dt"] + pd.Timedelta(days=28)
     return df
 
 
@@ -149,7 +139,4 @@ def ml_training_frame(df: pd.DataFrame, cement_type: str) -> pd.DataFrame:
         & (~df["Year"].isin(ML_EXCLUDED_YEARS))
         & df["Strength_28D"].notna()
     ].copy()
-    if "Strength_28D_ML" in frame.columns:
-        frame = frame[frame["Strength_28D_ML"].notna()].copy()
-        frame["Strength_28D"] = frame["Strength_28D_ML"]
     return frame

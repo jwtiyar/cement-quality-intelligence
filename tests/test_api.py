@@ -235,11 +235,12 @@ class TestChatEndpoint:
             "prediction_context": {
                 "cement_type": "OPC",
                 "prediction": 42.5,
+                "prediction_source": "recent_mean",
                 "confidence": "exploratory",
                 "confidence_label": "Exploratory simulation",
                 "r2": 0.4,
                 "rmse": 3.2,
-                "typesafe": {"enabled": True, "safe_to_show": False, "probability": 1.2},
+                "typesafe": {"enabled": True, "safe_to_show": False, "probability": 1.2, "status": "rejected"},
             },
         })
         assert resp.status_code == 422
@@ -248,11 +249,12 @@ class TestChatEndpoint:
         context = PredictionContext.model_validate({
             "cement_type": "SRC",
             "prediction": 38.5,
+            "prediction_source": "recent_mean",
             "confidence": "chemistry_only",
             "confidence_label": "Chemistry guidance only — ML confidence low",
             "r2": -0.2,
             "rmse": 5.0,
-            "typesafe": {"enabled": True, "safe_to_show": False, "probability": 0.74},
+            "typesafe": {"enabled": True, "safe_to_show": False, "probability": 0.74, "status": "rejected"},
         })
 
         prompt_context = ml_reliability_context(context)
@@ -261,6 +263,41 @@ class TestChatEndpoint:
         assert "TypeSafe safe-to-show=False (74%)" in prompt_context
         assert "HELD FOR QUALIFIED REVIEW" in prompt_context
         assert "never present them as production recommendations" in prompt_context
+
+    def test_predict_to_chat_end_to_end_payload_compatibility(self, client, monkeypatch):
+        from unittest.mock import AsyncMock
+        import routes
+
+        pred_resp = client.post("/api/predict", json={"Cement_Type": "OPC"})
+        assert pred_resp.status_code == 200
+        pred_data = pred_resp.json()
+
+        assert "prediction" in pred_data
+        assert "prediction_source" in pred_data
+        assert "typesafe" in pred_data
+
+        prediction_context = {
+            "cement_type": "OPC",
+            "prediction": pred_data["prediction"],
+            "prediction_source": pred_data["prediction_source"],
+            "confidence": pred_data["confidence"],
+            "confidence_label": pred_data["confidenceLabel"],
+            "r2": pred_data["r2"],
+            "rmse": pred_data["rmse"],
+            "typesafe": pred_data["typesafe"],
+        }
+
+        validated = PredictionContext.model_validate(prediction_context)
+        assert validated.prediction == pred_data["prediction"]
+
+        monkeypatch.setattr(routes, "ask_codex", AsyncMock(return_value=("Assistant response", "codex-test")))
+        chat_resp = client.post("/api/chat", json={
+            "message": "What does this estimate mean?",
+            "provider": "codex",
+            "prediction_context": prediction_context,
+        })
+        assert chat_resp.status_code == 200
+        assert chat_resp.json()["response"] == "Assistant response"
 
     @pytest.mark.skipif(
         bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),

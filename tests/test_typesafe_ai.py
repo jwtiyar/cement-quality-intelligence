@@ -13,7 +13,9 @@ def test_optional_adapter_is_a_noop_without_response(monkeypatch):
     assert typesafe_ai.rerank_contexts("query", candidates) is candidates
     assert typesafe_ai.assess_prediction("OPC", 42.0, "predictive", 0.8, 2.0) == {
         "enabled": False,
-        "safe_to_show": True,
+        "safe_to_show": None,
+        "probability": None,
+        "status": "not_reviewed",
     }
 
 
@@ -25,7 +27,9 @@ def test_malformed_response_falls_back_to_deterministic_behavior(monkeypatch):
     assert typesafe_ai.rerank_contexts("query", candidates) is candidates
     assert typesafe_ai.assess_prediction("OPC", 42.0, "predictive", 0.8, 2.0) == {
         "enabled": False,
-        "safe_to_show": True,
+        "safe_to_show": None,
+        "probability": None,
+        "status": "not_reviewed",
     }
 
 
@@ -92,4 +96,28 @@ def test_prediction_gate_requires_high_typesafe_probability(monkeypatch):
 
     result = typesafe_ai.assess_prediction("SRC", 38.5, "chemistry_only", -0.2, 5.0)
 
-    assert result == {"enabled": True, "safe_to_show": False, "probability": 0.74}
+    assert result == {
+        "enabled": True,
+        "safe_to_show": False,
+        "probability": 0.74,
+        "status": "rejected",
+    }
+
+
+def test_prediction_gate_approves_when_typesafe_probability_high(monkeypatch):
+    monkeypatch.setattr(
+        typesafe_ai,
+        "_evaluate",
+        lambda state, questions: SimpleNamespace(
+            nouls={"safe_to_show": SimpleNamespace(noul=0.85)}
+        ),
+    )
+
+    result = typesafe_ai.assess_prediction("OPC", 42.0, "predictive", 0.8, 2.0)
+
+    assert result == {
+        "enabled": True,
+        "safe_to_show": True,
+        "probability": 0.85,
+        "status": "approved",
+    }

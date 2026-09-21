@@ -1,10 +1,18 @@
-"""Application state: reload CSV, retrain models in memory, build API cache."""
+"""Application state: immutable snapshots, crash recovery, atomic refresh lock, and API cache.
+
+Single-worker deployment (uvicorn --workers 1) is required for multi-process safety.
+"""
 
 from __future__ import annotations
 
+import asyncio
+import calendar
+import hashlib
 import os
+import shutil
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -13,21 +21,47 @@ from data_prep import CEMENT_TYPES, default_csv_path, load_and_prepare
 from ml_train import ML_FEATURES, train_all_models
 
 ANOMALY_BOUNDS = {
-    "SiO2": (17, 26),        # ASTM/EN typical: 19-23%
-    "Al2O3": (2, 8),         # ASTM/EN typical: 3-6%
-    "Fe2O3": (1, 6),         # ASTM/EN typical: 1.5-4.5%
-    "CaO": (55, 70),         # ASTM/EN typical: 61-67%
-    "MgO": (0, 6),           # ASTM C150 max is 6.0%
-    "SO3": (0.5, 4.5),       # EN 197 max is 3.5%-4.0%, ASTM C150 max 3.0-4.5%
-    "Strength_28D": (20, 80),# EN 197 classes: 32.5, 42.5, 52.5 MPa
-    "Fineness": (2000, 6000),# Typical Blaine 2500-5000 cm2/g
-    "C3S": (30, 80),         # Bogue typical
-    "C3A": (0, 15)           # ASTM Type V max 5%, Type I up to 15%
+    "SiO2": (17, 26),
+    "Al2O3": (2, 8),
+    "Fe2O3": (1, 6),
+    "CaO": (55, 70),
+    "MgO": (0, 6),
+    "SO3": (0.5, 4.5),
+    "Strength_28D": (20, 80),
+    "Fineness": (2000, 6000),
+    "C3S": (30, 80),
+    "C3A": (0, 15),
 }
 
+
+@dataclass(frozen=True)
+class AppStateSnapshot:
+    """Immutable view of active dataset, models, and cache for request isolation."""
+    df: pd.DataFrame
+    xgb_models: dict[str, Any]
+    data_cache: dict[str, Any]
+    dataset_version: str
+    refresh_meta: dict[str, Any]
+    created_at: str
+
+
+_current_snapshot: AppStateSnapshot | None = None
+_refresh_lock = asyncio.Lock()
+
+# Module-level variables maintained for backward-compatibility with existing callers
 data_cache: dict[str, Any] = {}
 xgb_models: dict[str, Any] = {}
 df_global: pd.DataFrame | None = None
+
+
+def get_snapshot() -> AppStateSnapshot:
+    """Return the currently published state snapshot, ensuring request-level consistency."""
+    global _current_snapshot
+    if _current_snapshot is None:
+        reload_from_csv()
+    if _current_snapshot is None:
+        raise RuntimeError("Application state failed to initialize.")
+    return _current_snapshot
 
 
 def _chart_series(series: pd.Series) -> list[float | None]:
@@ -35,7 +69,6 @@ def _chart_series(series: pd.Series) -> list[float | None]:
 
 
 def _find_latest_month(df: pd.DataFrame) -> dict[str, int | None]:
-    """Return {year, month} of the most recent record with any data."""
     valid = df.dropna(subset=["Date_dt"])
     if valid.empty:
         return {"year": None, "month": None}
@@ -44,7 +77,6 @@ def _find_latest_month(df: pd.DataFrame) -> dict[str, int | None]:
 
 
 def _find_28d_era_start(df: pd.DataFrame) -> int | None:
-    """Return the first year where ≥50% of records have 28-day strength data."""
     for year in sorted(df["Year"].unique()):
         yr_df = df[df["Year"] == year]
         if yr_df.empty:
@@ -56,9 +88,10 @@ def _find_28d_era_start(df: pd.DataFrame) -> int | None:
 
 
 def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
-    """Return a detailed, structured summary of plant dataset for LLM chat context."""
+    """Return an exact, Python-calculated summary of laboratory data for assistant context."""
     if df is None:
-        df = df_global
+        snapshot = _current_snapshot
+        df = snapshot.df if snapshot is not None else df_global
     if df is None or df.empty:
         return "No live laboratory dataset loaded."
 
@@ -68,14 +101,14 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
 
     earliest = valid_df["Date_dt"].min().strftime("%Y-%m-%d")
     latest = valid_df["Date_dt"].max().strftime("%Y-%m-%d")
+    latest_dt = valid_df["Date_dt"].max()
     total_records = len(df)
 
     lines = []
-    lines.append("=== LIVE PLANT LABORATORY DATASET SUMMARY ===")
+    lines.append("=== LIVE PLANT LABORATORY DATASET SUMMARY (EXACT PYTHON STATISTICS) ===")
     lines.append(f"Total Daily Laboratory Records: {total_records}")
     lines.append(f"Data Coverage Range: {earliest} to {latest} (Latest Date: {latest})")
 
-    # Overall averages per cement type
     lines.append("\n--- OVERALL HISTORICAL AVERAGES PER CEMENT TYPE ---")
     for ctype in sorted(df["Cement_Type"].unique()):
         sub = df[df["Cement_Type"] == ctype]
@@ -91,7 +124,7 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
             f"LSF Avg={lsf_avg:.1f}% | C3S Avg={c3s_avg:.1f}%"
         )
 
-    # Monthly Summary (All available months in recent 24 months)
+    # Monthly Summary (Last 24 months)
     lines.append("\n--- MONTHLY STRENGTH & QUALITY AVERAGES (LAST 24 MONTHS) ---")
     valid_df_copy = valid_df.copy()
     valid_df_copy["YM"] = valid_df_copy["Date_dt"].dt.to_period("M")
@@ -109,54 +142,39 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
             s28_str = f"Avg={s28_vals.mean():.1f} MPa (Min={s28_vals.min():.1f}, Max={s28_vals.max():.1f})" if not s28_vals.empty else "N/A"
             se_str = f"Avg={se_vals.mean():.1f} MPa" if not se_vals.empty else "N/A"
             fin_str = f"Avg={fin_vals.mean():.0f} cm²/g" if not fin_vals.empty else "N/A"
-            if not lsf_vals.empty:
-                lsf_str = f"LSF={lsf_vals.mean():.1f}%"
-            else:
-                lsf_str = "N/A"
+            lsf_str = f"LSF={lsf_vals.mean():.1f}%" if not lsf_vals.empty else "N/A"
 
             lines.append(
                 f"• {ym} | {ctype} ({len(sub)} records) -> 28D Strength: {s28_str} | "
                 f"Early Strength: {se_str} | Blaine: {fin_str} | {lsf_str}"
             )
 
-    # Weekly Summary (Recent 12 Weeks)
-    lines.append("\n--- RECENT WEEKLY STRENGTH AVERAGES (LAST 12 WEEKS) ---")
-    valid_df_copy["YW"] = valid_df_copy["Date_dt"].dt.to_period("W")
-    unique_yws = sorted(valid_df_copy["YW"].unique(), reverse=True)[:12]
-
-    for yw in unique_yws:
-        yw_df = valid_df_copy[valid_df_copy["YW"] == yw]
-        for ctype in sorted(yw_df["Cement_Type"].unique()):
-            sub = yw_df[yw_df["Cement_Type"] == ctype]
-            s28_vals = sub["Strength_28D"].dropna()
-            se_vals = sub["Strength_Early"].dropna()
-            fin_vals = sub["Fineness"].dropna()
-
-            s28_str = f"{s28_vals.mean():.1f} MPa" if not s28_vals.empty else "N/A"
-            se_str = f"{se_vals.mean():.1f} MPa" if not se_vals.empty else "N/A"
-            fin_str = f"{fin_vals.mean():.0f} cm²/g" if not fin_vals.empty else "N/A"
-
-            start_str = yw.start_time.strftime("%Y-%m-%d")
-            end_str = yw.end_time.strftime("%Y-%m-%d")
-            lines.append(
-                f"• Week {start_str} to {end_str} | {ctype} ({len(sub)} records) -> "
-                f"28D Strength: {s28_str} | Early Strength: {se_str} | Blaine: {fin_str}"
-            )
-
     # Recent Daily Test Records (Latest 60 Daily Tests)
     lines.append("\n--- LATEST DAILY LABORATORY TEST RESULTS (MOST RECENT 60 TEST DAYS) ---")
-    lines.append("(Note: The most recent 2 days may show 'Pending Curing / 2-Day Test in Progress' because cement cubes take time to cure before crushing.)")
+    lines.append("(Note: Only samples produced within the last 28 days can physically be 'Pending 28D Curing'. Older missing tests are unrecorded.)")
     recent_60 = valid_df.head(60)
     for _, row in recent_60.iterrows():
         d_str = str(row["Date_str"])
         ctype = row["Cement_Type"]
-        
+        sample_dt = row.get("Date_dt")
+        age_days = (latest_dt - sample_dt).days if pd.notna(sample_dt) else 999
+
         s28_raw = row.get("Strength_28D")
-        s28 = f"{s28_raw:.1f} MPa" if pd.notna(s28_raw) else "Pending 28D Curing"
-        
+        if pd.notna(s28_raw):
+            s28 = f"{s28_raw:.1f} MPa"
+        elif age_days < 28:
+            s28 = "Pending 28D Curing"
+        else:
+            s28 = "Not recorded / missing"
+
         se_raw = row.get("Strength_Early")
-        se = f"{se_raw:.1f} MPa" if pd.notna(se_raw) else "Pending Early Curing"
-        
+        if pd.notna(se_raw):
+            se = f"{se_raw:.1f} MPa"
+        elif age_days < 2:
+            se = "Pending Early Curing"
+        else:
+            se = "Not recorded / missing"
+
         fin = f"{row['Fineness']:.0f} cm²/g" if pd.notna(row.get("Fineness")) else "N/A"
         lsf_raw = row.get("LSF")
         lsf_str = f"{lsf_raw:.1f}%" if pd.notna(lsf_raw) else "N/A"
@@ -173,10 +191,9 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
 
 
 def write_dataset_summary_to_file(df: pd.DataFrame) -> None:
-    """Generate a clean text summary of historical daily results and save to knowledge_base."""
+    """Generate and write a clean text summary of laboratory results into knowledge_base."""
     os.makedirs("knowledge_base", exist_ok=True)
     summary_path = os.path.join("knowledge_base", "latest_daily_results.txt")
-    
     summary_text = get_live_dataset_summary(df)
     tmp_path = summary_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
@@ -184,29 +201,13 @@ def write_dataset_summary_to_file(df: pd.DataFrame) -> None:
     os.replace(tmp_path, summary_path)
 
 
-def reload_from_csv(csv_path: str | None = None) -> None:
-    """
-    Load latest CSV, retrain all ML models in memory, rebuild dashboard cache.
-
-    Called on every server start and after Excel sync — models are never saved to disk
-    because new lab data arrives daily/weekly.
-    """
-    global data_cache, xgb_models, df_global
-
-    path = csv_path or default_csv_path()
-    print("Loading and cleaning dataset...")
-    df = load_and_prepare(path)
-    df_global = df
-
-    # Save a text summary report for RAG assistant awareness
-    try:
-        write_dataset_summary_to_file(df)
-        print("Dataset text summary updated in knowledge_base/latest_daily_results.txt")
-    except Exception as e:
-        print(f"Error saving dataset text summary: {e}")
-
-    xgb_models, ml_data = train_all_models(df)
-
+def _build_cache_and_snapshot(
+    df: pd.DataFrame,
+    csv_path: str,
+    models: dict[str, Any],
+    ml_data: dict[str, Any],
+    refresh_meta: dict[str, Any],
+) -> AppStateSnapshot:
     trends: dict[str, dict[str, list]] = {}
     chart_params = ["Strength_28D", "Strength_Early", "C3S", "CaO", "Fineness", "LSF"]
     years = sorted(df["Year"].unique().tolist())
@@ -239,15 +240,15 @@ def reload_from_csv(csv_path: str | None = None) -> None:
     type_counts = {str(k): int(v) for k, v in df["Cement_Type"].value_counts().to_dict().items()}
 
     csv_mtime = None
-    if os.path.exists(path):
-        csv_mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc).isoformat()
+    if os.path.exists(csv_path):
+        csv_mtime = datetime.fromtimestamp(os.path.getmtime(csv_path), tz=timezone.utc).isoformat()
 
     strength_28_count = int(df["Strength_28D"].notna().sum())
 
     anomalies = []
     for param, (low, high) in ANOMALY_BOUNDS.items():
         if param in df.columns:
-            s_numeric = pd.to_numeric(df[param], errors='coerce')
+            s_numeric = pd.to_numeric(df[param], errors="coerce")
             mask = s_numeric.notna() & ((s_numeric < low) | (s_numeric > high))
             outliers = df[mask]
             for _, row in outliers.iterrows():
@@ -256,10 +257,16 @@ def reload_from_csv(csv_path: str | None = None) -> None:
                     "Type": str(row.get("Cement_Type", "Unknown")),
                     "Parameter": param,
                     "Value": round(float(row[param]), 2),
-                    "Expected": f"{low} - {high}"
+                    "Expected": f"{low} - {high}",
                 })
 
-    data_cache = {
+    latest_rec_date = str(df["Date_str"].dropna().max()) if "Date_str" in df.columns and not df["Date_str"].dropna().empty else None
+
+    # Compute a deterministic dataset version hash
+    hash_source = f"{len(df)}:{csv_mtime}:{latest_rec_date}"
+    dataset_version = hashlib.sha256(hash_source.encode()).hexdigest()[:12]
+
+    cache = {
         "summary": {
             "totalRecords": len(df),
             "strength28Records": strength_28_count,
@@ -279,11 +286,19 @@ def reload_from_csv(csv_path: str | None = None) -> None:
         },
         "dataset": {
             "csvLastModified": csv_mtime,
-            "retrainPolicy": "Models retrained in memory on every startup and Excel sync",
+            "latestRecordDate": latest_rec_date,
+            "version": dataset_version,
+            "retrainPolicy": "Models retrained in memory on startup and validated refresh",
             "mlExcludedYears": sorted({2019}),
+            "freshness": {
+                "latestRecordDate": latest_rec_date,
+                "datasetVersion": dataset_version,
+                "refreshStatus": refresh_meta.get("status", "idle"),
+                "refreshTimestamp": refresh_meta.get("timestamp"),
+                "refreshError": refresh_meta.get("error"),
+            },
             "strength28Note": (
-                "Pre-~2018 rows often have 2-day strength only; "
-                "28-day training uses rows where 28D exists (~{n} rows).".format(n=strength_28_count)
+                "Consolidated IQS 5 / EN 196-1 28-day strength ({n} records).".format(n=strength_28_count)
             ),
         },
         "trends": {"labels": [str(y) for y in years], "data": trends},
@@ -295,6 +310,176 @@ def reload_from_csv(csv_path: str | None = None) -> None:
         "mlFeatures": ML_FEATURES,
         "latestDataMonth": _find_latest_month(df),
         "strength28Era": _find_28d_era_start(df),
+        "refreshStatus": refresh_meta,
     }
 
-    print(f"Cache ready: {len(df)} records, CSV mtime {csv_mtime}")
+    return AppStateSnapshot(
+        df=df,
+        xgb_models=models,
+        data_cache=cache,
+        dataset_version=dataset_version,
+        refresh_meta=refresh_meta,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def reload_from_csv(csv_path: str | None = None) -> None:
+    """
+    Startup loader with crash recovery.
+    Decoupled: if ML training fails during cold startup, solver and data browsing remain online.
+    """
+    global _current_snapshot, data_cache, xgb_models, df_global
+
+    path = csv_path or default_csv_path()
+
+    # Crash recovery: if primary CSV is missing or empty, attempt restore from .bak
+    if (not os.path.exists(path) or os.path.getsize(path) == 0) and os.path.exists(path + ".bak"):
+        print(f"Warning: Primary CSV '{path}' missing or empty; attempting restore from backup...")
+        try:
+            shutil.copyfile(path + ".bak", path)
+            print(f"Restored primary dataset from backup: {path}.bak")
+        except Exception as e:
+            print(f"Failed to restore from backup: {e}")
+
+    print("Loading and cleaning dataset...")
+    df = load_and_prepare(path)
+
+    # Cold startup ML training resilience: failures in ML do not take down the server
+    models: dict[str, Any] = {}
+    ml_data: dict[str, Any] = {}
+    try:
+        models, ml_data = train_all_models(df)
+    except Exception as e:
+        print(f"Warning: ML model training failed during startup: {e}. Solver remains available.")
+        for c in CEMENT_TYPES:
+            ml_data[c] = {
+                "confidence": "insufficient_evidence",
+                "confidenceLabel": "ML unavailable (startup training error)",
+                "hasModel": False,
+                "r2": 0.0,
+                "rmse": 0.0,
+                "averages": {feat: float(df[feat].mean()) if feat in df.columns else 0.0 for feat in ML_FEATURES},
+            }
+
+    try:
+        write_dataset_summary_to_file(df)
+    except Exception as e:
+        print(f"Error saving dataset text summary: {e}")
+
+    snapshot = _build_cache_and_snapshot(
+        df=df,
+        csv_path=path,
+        models=models,
+        ml_data=ml_data,
+        refresh_meta={
+            "status": "idle",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": None,
+        },
+    )
+
+    _current_snapshot = snapshot
+    df_global = snapshot.df
+    xgb_models = snapshot.xgb_models
+    data_cache = snapshot.data_cache
+    print(f"State initialized: {len(df)} records, version {snapshot.dataset_version}")
+
+
+async def refresh_dataset_transactional(
+    allow_deletions: bool = False,
+    cancellation_check: Callable[[], bool] | None = None,
+) -> AppStateSnapshot:
+    """
+    Transactional refresh:
+    Extract to staging, validate, retrain models, verify timeout status,
+    preserve recoverable .bak, and atomically swap snapshot and files.
+    If any step fails, active snapshot and files remain untouched.
+    """
+    global _current_snapshot, data_cache, xgb_models, df_global
+
+    from build_dataset import extract_data
+
+    active_csv = default_csv_path()
+    staging_csv = active_csv + ".staging"
+    bak_csv = active_csv + ".bak"
+
+    async with _refresh_lock:
+        try:
+            # 1. Staging extraction and deletion validation
+            extract_data(
+                target_path=staging_csv,
+                allow_deletions=allow_deletions,
+                existing_csv_path=active_csv if os.path.exists(active_csv) else None,
+            )
+
+            # 2. In-memory preparation & model training against candidate
+            df_new = load_and_prepare(staging_csv)
+            models_new, ml_data_new = train_all_models(df_new)
+
+            # 3. Check for caller timeout/cancellation before commit
+            if cancellation_check and cancellation_check():
+                if os.path.exists(staging_csv):
+                    os.remove(staging_csv)
+                raise asyncio.CancelledError("Refresh operation timed out before commit step.")
+
+            # 4. Safe backup preservation
+            if os.path.exists(active_csv):
+                shutil.copyfile(active_csv, bak_csv)
+
+            # 5. Atomic file replacement
+            os.replace(staging_csv, active_csv)
+
+            # 6. Synchronize text summary and RAG index
+            try:
+                write_dataset_summary_to_file(df_new)
+            except Exception as e:
+                print(f"Warning: failed to write refreshed dataset summary: {e}")
+
+            # 7. Atomic in-memory snapshot publication
+            refresh_meta = {
+                "status": "success",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error": None,
+                "records": len(df_new),
+            }
+            new_snapshot = _build_cache_and_snapshot(
+                df=df_new,
+                csv_path=active_csv,
+                models=models_new,
+                ml_data=ml_data_new,
+                refresh_meta=refresh_meta,
+            )
+
+            _current_snapshot = new_snapshot
+            df_global = new_snapshot.df
+            xgb_models = new_snapshot.xgb_models
+            data_cache = new_snapshot.data_cache
+
+            print(f"Refresh completed successfully: {len(df_new)} records, version {new_snapshot.dataset_version}")
+            return new_snapshot
+
+        except Exception as e:
+            # Clean up temporary staging file on failure
+            if os.path.exists(staging_csv):
+                try:
+                    os.remove(staging_csv)
+                except Exception:
+                    pass
+            # Record failure status in existing snapshot metadata without losing active state
+            if _current_snapshot is not None:
+                updated_meta = {
+                    "status": "failed",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "error": str(e),
+                }
+                # Create a shallow updated snapshot preserving active data/models
+                _current_snapshot = AppStateSnapshot(
+                    df=_current_snapshot.df,
+                    xgb_models=_current_snapshot.xgb_models,
+                    data_cache={**_current_snapshot.data_cache, "refreshStatus": updated_meta},
+                    dataset_version=_current_snapshot.dataset_version,
+                    refresh_meta=updated_meta,
+                    created_at=_current_snapshot.created_at,
+                )
+                data_cache = _current_snapshot.data_cache
+            raise

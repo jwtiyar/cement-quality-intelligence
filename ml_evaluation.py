@@ -80,46 +80,154 @@ def rolling_evaluation(
     test_size: int | None = None,
     bootstrap_samples: int = 300,
 ) -> dict[str, Any]:
-    frame = ml_training_frame(df, cement_type)[ML_FEATURES + ["Strength_28D", "Date_str", "Strength_28D_Source"]].dropna()
-    frame = frame.sort_values("Date_str").reset_index(drop=True)
-    if len(frame) < 300:
-        raise ValueError(f"Not enough rows for rolling evaluation: {cement_type} ({len(frame)})")
-    test_size = test_size or max(100, len(frame) // 10)
-    first_test = len(frame) - (folds * test_size)
-    if first_test < 100:
-        raise ValueError(f"Too many folds for {cement_type}: {folds} x {test_size}")
+    req_cols = ML_FEATURES + ["Strength_28D", "Date_str", "Strength_28D_Source"]
+    if "Availability_Date_28D" in df.columns:
+        req_cols.append("Availability_Date_28D")
 
-    predictions: dict[str, list[np.ndarray]] = {name: [] for name in ("train_mean", "recent_mean", "ridge", "xgboost", "xgboost_recent_24m", "xgboost_recency_weighted")}
+    frame = ml_training_frame(df, cement_type)
+    for col in req_cols:
+        if col not in frame.columns and col == "Strength_28D_Source":
+            frame = frame.copy()
+            frame["Strength_28D_Source"] = "unknown"
+
+    avail_cols = [c for c in req_cols if c in frame.columns]
+    frame = frame[avail_cols].dropna().sort_values("Date_str").reset_index(drop=True)
+
+    if len(frame) < 60:
+        return {
+            "cementType": cement_type,
+            "status": "insufficient_evidence",
+            "reason": f"Not enough rows for rolling evaluation: {cement_type} ({len(frame)} rows; minimum 60 required)",
+            "rows": int(len(frame)),
+            "folds": [],
+            "models": {},
+            "promotionDecision": {
+                "promoted": False,
+                "reason": "Insufficient data to support meaningful time-series validation",
+            },
+        }
+
+    test_size = test_size or max(20, len(frame) // (folds + 2))
+    first_test = len(frame) - (folds * test_size)
+    if first_test < 20:
+        return {
+            "cementType": cement_type,
+            "status": "insufficient_evidence",
+            "reason": f"Insufficient historical records for {folds} folds with test_size={test_size} ({len(frame)} total rows)",
+            "rows": int(len(frame)),
+            "folds": [],
+            "models": {},
+            "promotionDecision": {
+                "promoted": False,
+                "reason": "Insufficient historical training depth for requested folds",
+            },
+        }
+
+    predictions: dict[str, list[np.ndarray]] = {
+        name: [] for name in ("train_mean", "recent_mean", "ridge", "xgboost", "xgboost_recent_24m", "xgboost_recency_weighted")
+    }
     actual: list[np.ndarray] = []
     fold_reports = []
+    folds_won = 0
+
     for fold in range(folds):
         train_end = first_test + fold * test_size
         test_end = train_end + test_size
-        train, test = frame.iloc[:train_end], frame.iloc[train_end:test_end]
+        train_raw, test = frame.iloc[:train_end], frame.iloc[train_end:test_end]
+
+        test_start_date = pd.to_datetime(test["Date_str"].iloc[0])
+        pred_time = test_start_date + pd.Timedelta(days=2)
+
+        if "Availability_Date_28D" in train_raw.columns:
+            avail_mask = pd.to_datetime(train_raw["Availability_Date_28D"]) <= pred_time
+        else:
+            avail_mask = pd.to_datetime(train_raw["Date_str"]) + pd.Timedelta(days=28) <= pred_time
+
+        train = train_raw[avail_mask]
+        if len(train) < 10:
+            continue
+
         fold_predictions = _model_predictions(train, test)
         actual.append(test["Strength_28D"].to_numpy())
         for name, prediction in fold_predictions.items():
             predictions[name].append(prediction)
+
+        fold_mae_xgb = float(mean_absolute_error(test["Strength_28D"], fold_predictions["xgboost"]))
+        fold_mae_base = float(mean_absolute_error(test["Strength_28D"], fold_predictions["recent_mean"]))
+        won = fold_mae_xgb < fold_mae_base
+        if won:
+            folds_won += 1
+
         fold_reports.append({
             "fold": fold + 1,
             "trainEnd": str(train["Date_str"].iloc[-1]),
             "testStart": str(test["Date_str"].iloc[0]),
             "testEnd": str(test["Date_str"].iloc[-1]),
-            "sourceCounts": {str(source): int(count) for source, count in test["Strength_28D_Source"].value_counts().items()},
+            "trainSamplesAvailable": int(len(train)),
+            "xgbMae": round(fold_mae_xgb, 3),
+            "baselineMae": round(fold_mae_base, 3),
+            "xgbBeatBaseline": won,
+            "sourceCounts": {str(source): int(count) for source, count in test["Strength_28D_Source"].value_counts().items()} if "Strength_28D_Source" in test.columns else {},
         })
 
+    if not actual:
+        return {
+            "cementType": cement_type,
+            "status": "insufficient_evidence",
+            "reason": f"Zero valid evaluation folds after calendar availability purging: {cement_type}",
+            "rows": int(len(frame)),
+            "folds": [],
+            "models": {},
+            "promotionDecision": {
+                "promoted": False,
+                "reason": "Zero valid folds after calendar cutoff",
+            },
+        }
+
     y_true = np.concatenate(actual)
+    total_eval_folds = len(fold_reports)
+    fold_win_ratio = (folds_won / total_eval_folds) if total_eval_folds > 0 else 0.0
+
     report = {
         "cementType": cement_type,
+        "status": "evaluated",
         "rows": int(len(frame)),
         "folds": fold_reports,
-        "sourceCounts": {str(source): int(count) for source, count in frame["Strength_28D_Source"].value_counts().items()},
+        "sourceCounts": {str(source): int(count) for source, count in frame["Strength_28D_Source"].value_counts().items()} if "Strength_28D_Source" in frame.columns else {},
         "models": {},
     }
+
     for name, chunks in predictions.items():
-        prediction = np.concatenate(chunks)
-        report["models"][name] = {
-            **_metrics(y_true, prediction),
-            "bootstrap95": _bootstrap_ci(y_true, prediction, samples=bootstrap_samples),
-        }
+        if chunks:
+            prediction = np.concatenate(chunks)
+            report["models"][name] = {
+                **_metrics(y_true, prediction),
+                "bootstrap95": _bootstrap_ci(y_true, prediction, samples=bootstrap_samples),
+            }
+
+    xgb_metrics = report["models"].get("xgboost", {})
+    base_metrics = report["models"].get("recent_mean", {})
+    xgb_mae = xgb_metrics.get("mae", float("inf"))
+    base_mae = base_metrics.get("mae", float("inf"))
+    xgb_r2 = xgb_metrics.get("r2", -999.0)
+
+    mae_improvement_pct = ((base_mae - xgb_mae) / base_mae) if (base_mae > 0 and base_mae < float("inf")) else 0.0
+    promoted = (
+        (total_eval_folds >= 3)
+        and (fold_win_ratio >= 0.75)
+        and (mae_improvement_pct >= 0.05)
+        and (xgb_r2 > 0.25)
+    )
+
+    report["promotionDecision"] = {
+        "promoted": bool(promoted),
+        "totalFolds": total_eval_folds,
+        "foldsWon": folds_won,
+        "foldsWonRatio": round(fold_win_ratio, 3),
+        "maeImprovementPct": round(mae_improvement_pct * 100, 2),
+        "overallXgbMae": round(xgb_mae, 3),
+        "overallRecentMeanMae": round(base_mae, 3),
+        "overallR2": round(xgb_r2, 3),
+        "criteria": ">=3 folds, >=75% folds won, >=5% overall MAE improvement, R2 > 0.25",
+    }
     return report

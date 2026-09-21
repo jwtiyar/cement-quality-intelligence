@@ -90,165 +90,97 @@ Custom vocabulary with the `qc:` prefix: `qc:triage`, `qc:needs-info`, `qc:ready
 
 Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
-# KUMO KNOWLEDGE BASE
-
-**Generated:** 2026-03-18 | **Commit:** 38518e34 | **Branch:** rozenmd/fix-preview
+# CEMENT QUALITY INTELLIGENCE KNOWLEDGE BASE
 
 ## OVERVIEW
 
-Cloudflare's React component library (`@cloudflare/kumo`). pnpm monorepo: component library (Base UI + Tailwind v4), Astro docs site, Figma plugin, screenshot worker. ESM-only, Node 24+.
+**Cement Quality Intelligence** is a laboratory engineering and decision-support system for cement manufacturing plants. It integrates:
+1. **Quality Analytics**: Historical laboratory quality monitoring across OPC, SRC, and SBC cement types.
+2. **Strength Estimation (ML & Baselines)**: Out-of-time predictive models estimating 28-day mortar prism compressive strength from early 2-day strength, fineness, and oxide chemistry.
+3. **Raw Mix Optimization**: F.L. Smidth 4x4 matrix proportion solver balancing Limestone, Shale/Clay, Sand, and Iron Ore/Pyrite to hit target LSF, SM, and AM moduli under HFO fuel combustion conditions.
+4. **Plant Operations Assistant & Technical RAG**: Hybrid AI assistant using technical reference standards and plant laboratory data with safety review gating.
 
-## STRUCTURE
+---
 
-```
-kumo/
-├── packages/
-│   ├── kumo/                     # Component library → see packages/kumo/AGENTS.md
-│   ├── kumo-docs-astro/          # Astro docs site → see packages/kumo-docs-astro/AGENTS.md
-│   ├── kumo-figma/               # Figma plugin → see packages/kumo-figma/AGENTS.md
-│   └── kumo-screenshot-worker/   # Visual regression Worker → see packages/kumo-screenshot-worker/AGENTS.md
-├── ci/                           # CI/CD scripts → see ci/AGENTS.md
-├── lint/                         # Custom oxlint rules (5 rules in package, 4 at root)
-├── .changeset/                   # Changeset files
-├── .github/workflows/            # 6 workflow YAMLs (release, pullrequest, preview, etc.)
-└── .vite-hooks/                  # Git hooks (Vite+): pre-commit codegen+staged, pre-push changeset validation
-```
+## ARCHITECTURE & CONCURRENCY CONSTRAINTS
 
-## WHERE TO LOOK
+### Single-Worker Deployment
+- **CRITICAL CONSTRAINT**: The production server MUST be started as a single process:
+  ```bash
+  uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
+  ```
+- **Rationale**: State synchronization, the transactional data refresh lock (`asyncio.Lock`), and atomic in-memory snapshot switches (`AppStateSnapshot`) are coordinated within the Python process memory space. Running multiple worker processes (`--workers > 1`) would cause split-brain data state and inconsistent cache refreshes unless backed by an external distributed lock and shared cache (e.g. Redis).
 
-| Task                 | Location                                         | Notes                                                    |
-| -------------------- | ------------------------------------------------ | -------------------------------------------------------- |
-| Component API        | `packages/kumo/ai/component-registry.{json,md}`  | Source of truth. Query with `jq` or CLI                  |
-| Component source     | `packages/kumo/src/components/{name}/{name}.tsx` | Standard pattern                                         |
-| Blocks (installable) | `packages/kumo/src/blocks/`                      | NOT library exports; installed via CLI                   |
-| Semantic tokens      | `packages/kumo/src/styles/theme-kumo.css`        | AUTO-GENERATED; edit `scripts/theme-generator/config.ts` |
-| Custom lint rules    | `lint/` (4 rules) + `packages/kumo/lint/` (+1)   | Package copy adds `no-deprecated-props`                  |
-| Demo examples        | `packages/kumo-docs-astro/src/components/demos/` | Feed into registry codegen                               |
-| CI scripts           | `ci/`                                            | Reporter system, versioning, deployment                  |
-| Figma generators     | `packages/kumo-figma/src/generators/`            | 37 component generators                                  |
+### Immutability & Snapshot Semantics
+- `AppStateSnapshot` encapsulates the active dataframe, trained models, data cache, and dataset version.
+- API requests capture `snapshot = state.get_snapshot()` once at the start of request handling.
+- Published snapshot attributes and underlying data structures (`df`, `data_cache`, `xgb_models`) must be treated as strictly read-only.
+- Never mutate state in-place. State updates occur only via atomic snapshot swaps.
 
-## CONVENTIONS
+---
 
-### Styling (CRITICAL)
+## DATA REFRESH, PROVENANCE & CRASH RECOVERY
 
-- **ONLY semantic tokens**: `bg-kumo-base`, `text-kumo-default`, `border-kumo-line`, `ring-kumo-hairline`
-- **NEVER raw Tailwind colors**: `bg-blue-500`, `text-gray-900` → fails lint
-- **NEVER `dark:` variant**: dark mode automatic via `light-dark()` in CSS custom properties
-- **Exceptions**: `bg-white`, `bg-black`, `text-white`, `text-black`, `transparent`
-- **`cn()` utility**: Always compose classNames via `cn("base", conditional && "extra", className)`
-- **Surface hierarchy**: `bg-kumo-base` → `bg-kumo-elevated` → `bg-kumo-recessed`
-- **Mode/theme**: `data-mode="light"|"dark"` + `data-theme="fedramp"` on parent element
+### Data Pipelines
+- **Raw Sources**: Yearly plant laboratory Excel workbooks spanning 2013–2026.
+- **Extraction**: `build_dataset.py` processes raw workbooks into consolidated `ALL_CEMENT_DATA.csv`.
+- **Target Extraction**: Consolidates verified equivalent 28-day compressive strength columns (`Cmp.St. Mpa_28 day`, `28 day`, `28 days`) and records column provenance in `Strength_28D_Source`.
+- **Early Strength Input**: The model contract strictly requires 2-day strength (`Strength_Early` == `Strength_2D`). 3-day and 7-day values are never mixed into this target.
 
-### Components
+### Refresh Protection & Atomicity
+- **Transactional Staging**: Background extraction builds a candidate file (`ALL_CEMENT_DATA.csv.tmp`).
+- **Data Loss Validation**: The candidate must cover expected cement types, year ranges, and workbook integrity. If candidate rows drop unexpectedly without explicit override, `UnexplainedDataLossError` is raised and the active dataset is preserved.
+- **Rollback & Backup**: Before replacing the active CSV, the current file is copied to `ALL_CEMENT_DATA.csv.bak`.
+- **Atomic Swap**: `os.replace` commits the staging file to `ALL_CEMENT_DATA.csv`.
+- **Crash Recovery**: If the server starts and finds `ALL_CEMENT_DATA.csv` missing or empty, it automatically restores from `ALL_CEMENT_DATA.csv.bak`.
+- **Decoupled Startup**: If ML training fails during server startup, the server still boots in safe fallback mode. Valid data browsing and the raw mix optimizer remain operational while ML predictions fall back to recent baselines.
 
-- **Scaffold new**: `pnpm --filter @cloudflare/kumo new:component` (never create manually)
-- **Registry first**: Always check `component-registry.json` before using/modifying a component
-- See `packages/kumo/AGENTS.md` for component conventions (variants, forwardRef, displayName)
+---
 
-### Imports
+## MACHINE LEARNING & EVALUATION STANDARDS
 
-- **No cross-package relative imports**: Use `@cloudflare/kumo` not `../../kumo/src/...` (lint-enforced)
-- **ESM-only**: `"type": "module"` throughout. No CJS.
+### Physical Curing Delay & Availability Cutoffs
+- **Physical Reality**: Mortar prism compressive strength tests require a physical 28-day curing incubation period.
+- **Prediction Timing**: For a production sample taken on date D_sample, early 2-day testing completes at T_pred = D_sample + 2 days.
+- **Leakage Prevention**: Any historical sample used to predict D_sample must have had its 28-day test completed and recorded on or before T_pred. In the absence of recorded test completion timestamps, the physical curing constraint enforces:
+  D_train <= D_sample - 26 days
+- **Symmetric Baseline**: The recent-mean baseline must respect the identical availability cutoff as the ML model.
 
-### Changesets
+### Promotion Gating
+To be promoted as an active decision-support model over the historical/recent baseline:
+1. **Expanding Folds**: Must be evaluated across >= 3 chronological out-of-time folds without future lookahead.
+2. **Win Rate**: The model must outperform the baseline in >= 75% of evaluated folds.
+3. **Accuracy Margin**: The model must demonstrate an aggregate out-of-time MAE reduction of >= 5% compared to the recent-mean baseline.
+4. **Correlation**: Must achieve R^2 > 0.25 on the validation holdout.
+5. **Honest Reporting**: When a model is not promoted, the system transparently falls back to `recent_mean` and reports the true baseline error metrics, never fabricated model statistics.
 
-- **Enforced for `packages/kumo/`**: Pre-push hook requires changeset for npm-published library
-- **Optional for `kumo-docs-astro`**: Version appears in `/api/version` endpoint (debugging) but nothing depends on it
-- **Not needed for `kumo-figma`**: Figma plugin, not published to npm
-- **Pre-push hook**: `.vite-hooks/pre-push` validates before push. Bypass: `git push --no-verify` (or `VITE_GIT_HOOKS=0`)
-- **AI agents NEVER**: `pnpm version`, `pnpm release`, `pnpm publish:beta`, `pnpm release:production`
+---
 
-### Pull Request Descriptions
+## TYPE-SAFE AI & ASSISTANT PROTOCOL
 
-PR descriptions are validated by CI. Include this checklist at the end of your PR body:
+### Safety Decision Validation
+- `/api/chat` strictly validates TypeSafe review responses:
+  - `status == "approved"` <=> `enabled == True` and `safe_to_show == True`
+  - `status == "rejected"` <=> `enabled == True` and `safe_to_show == False`
+  - `status == "not_reviewed"` <=> `enabled == False` and `safe_to_show == None`
+- Unreviewed predictions are never assumed approved.
 
-```markdown
-- Reviews
-- [ ] bonk has reviewed the change
-- [x] automated review not possible because: <your reason here>
-- Tests
-- [ ] Tests included/updated
-- [ ] Automated tests not possible - manual testing has been completed as follows: <description>
-- [x] Additional testing not necessary because: <your reason here>
-```
+### LLM Execution Safety
+- Synchronous LLM calls are offloaded from the event loop using `anyio.to_thread.run_sync`.
+- Assistant queries enforce a whole-request timeout of 35 seconds, returning HTTP 504 on deadline expiration.
+- Curing status interpretation: Only samples younger than 28 days can physically be "Pending 28D Curing". Older samples without tests are reported as "unrecorded / missing".
 
-Rules:
+---
 
-- Check ONE option in each section (Reviews and Tests)
-- If providing a justification (`because:` or `as follows:`), text must follow on the same line
-- Indentation is flexible — nested under headers is fine
-- Skip validation entirely with the `skip-pr-description-validation` label
+## TESTING & QUALITY GATES
 
-## ANTI-PATTERNS
-
-| Pattern                        | Why                                                          | Instead                                     |
-| ------------------------------ | ------------------------------------------------------------ | ------------------------------------------- |
-| `bg-blue-500`, `text-gray-*`   | Breaks theming, fails lint                                   | `bg-kumo-brand`, `text-kumo-default`        |
-| `dark:bg-black`                | Redundant; tokens auto-adapt                                 | Remove `dark:` prefix                       |
-| Missing `displayName`          | Breaks React DevTools                                        | Set `.displayName` on forwardRef components |
-| Manual component file creation | Misses vite/package.json/index updates                       | Use scaffolding tool                        |
-| Editing auto-generated files   | `theme-kumo.css`, `ai/schemas.ts`, `ai/component-registry.*` | Edit source configs, run codegen            |
-
-## COMMANDS
-
-```bash
-# Cross-cutting
-pnpm dev                                          # Docs dev server (localhost:4321)
-pnpm lint                                         # oxlint + custom rules
-pnpm typecheck                                    # TypeScript check all packages
-pnpm changeset                                    # Create changeset (required for kumo changes)
-
-# Package-specific (see child AGENTS.md for full lists)
-pnpm --filter @cloudflare/kumo build              # Build library
-pnpm --filter @cloudflare/kumo test               # Vitest
-pnpm --filter @cloudflare/kumo codegen:registry   # Regenerate component-registry
-pnpm --filter @cloudflare/kumo-figma build        # Build Figma plugin
-```
-
-## BUILD PIPELINE
-
-```
-kumo-docs-astro demos → dist/demo-metadata.json
-                              ↓
-kumo codegen:registry → ai/component-registry.{json,md} + ai/schemas.ts
-                              ↓
-kumo-figma build:data → generated/*.json → vp pack (tsdown) → code.js (IIFE, ES2017)
-```
-
-Cross-package dependency: registry codegen requires docs demo metadata. Run `codegen:demos` in docs before `codegen:registry` in kumo.
-
-## TOOLCHAIN
-
-| Tool       | Version   | Notes                                                     |
-| ---------- | --------- | --------------------------------------------------------- |
-| Node       | ^24.12.0  | Engine constraint (`.node-version`)                       |
-| pnpm       | >=10.21.0 | Workspace manager                                         |
-| Vite+      | 0.2.2     | Unified toolchain (`vp` CLI): build, test, lint, fmt      |
-| TypeScript | 5.9.2     | Via pnpm catalog                                          |
-| Vite       | 8.x       | Bundled via vite-plus; library mode (kumo), docs server   |
-| Tailwind   | 4.1.17    | v4 with `light-dark()` tokens                             |
-| Oxlint     | bundled   | Via `vp lint`; config in vite.config.ts + custom JS rules |
-| Oxfmt      | bundled   | Via `vp fmt`; replaced Prettier                           |
-| Vitest     | bundled   | Via `vp test`; happy-dom env, v8 coverage                 |
-| Changesets | latest    | Version management                                        |
-| Astro      | 7.x       | Docs framework                                            |
-
-Lint/format/test config lives in `vite.config.ts` (root and per-package) — there
-are no `.oxlintrc.json` / `.prettierrc` files. `vp check` runs format + lint.
-The [global Vite+ CLI](https://viteplus.dev/) is optional but recommended for contributors: the binary ships with the local `vite-plus` dependency (`pnpm vp …`), and hooks resolve it from `node_modules/.bin`.
-
-## SECURITY
-
-- **NEVER commit** Figma tokens, npm tokens, or API keys
-- `.env` files are gitignored
-- `wrangler.jsonc` contains Cloudflare account IDs (not secret but don't expose)
-
-## NOTES
-
-- `ai/component-registry.json`, `ai/component-registry.md` are auto-generated at build time and gitignored (shipped in npm package). `ai/schemas.ts` is a stub for fresh clones (full version generated during build)
-- `src/primitives/` (40 files) are auto-generated Base UI re-exports
-- Blocks in `src/blocks/` are NOT exported from package index; installed via CLI `kumo add`
-- `src/catalog/` is a runtime JSON-UI rendering module (separate concern from component library)
-- Single linter: Oxlint via `vp lint` (custom kumo JS rules + native jsx-a11y rules; type-aware + type-checked)
-- `PLOP_INJECT_EXPORT` and `PLOP_INJECT_COMPONENT_ENTRY` markers in source for scaffolding
-- 6 GitHub Actions workflows exist in `.github/workflows/` (release, pullrequest, preview, preview-deploy, bonk, reviewer)
+- **Test Suite**: `pytest` runs offline tests with mock keys and synthetic data by default.
+- **Synthetic Fixtures**: Located in `tests/fixtures/` (`synthetic_cement_data.csv`, `sparse_cement_data.csv`).
+- **Browser Smoke Test**: Run via Chromium:
+  ```bash
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium node tests/smoke_dashboard.mjs
+  ```
+- **Secret Scan**: Run before every commit and push:
+  ```bash
+  betterleaks git .
+  ```
