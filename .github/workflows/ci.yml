@@ -42,9 +42,11 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Run Browser Smoke Test
+        env:
+          PYTHON_BIN: python
         run: |
           node tests/smoke_dashboard.mjs
 
       - name: Secret Scan (Betterleaks)
         run: |
-          docker run --rm -v "$PWD":/repo -w /repo ghcr.io/betterleaks/betterleaks:latest git /repo || true
+          docker run --rm -v "$PWD":/repo -w /repo ghcr.io/betterleaks/betterleaks:latest git /repo

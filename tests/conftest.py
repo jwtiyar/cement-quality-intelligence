@@ -16,6 +16,33 @@ SYNTHETIC_CSV_PATH = os.path.join(FIXTURES_DIR, "synthetic_cement_data.csv")
 SPARSE_CSV_PATH = os.path.join(FIXTURES_DIR, "sparse_cement_data.csv")
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-private-data",
+        action="store_true",
+        default=False,
+        help="Run tests that require the private production dataset (>10k records)",
+    )
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "private_data: mark test as requiring the private production CSV"
+    )
+    if not config.getoption("--run-private-data", default=False):
+        os.environ.setdefault("CEMENT_DATA_CSV", SYNTHETIC_CSV_PATH)
+
+
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--run-private-data", default=False):
+        skip_private = pytest.mark.skip(
+            reason="Private dataset tests are opt-in. Pass --run-private-data with a production CSV to run."
+        )
+        for item in items:
+            if "private_data" in item.keywords:
+                item.add_marker(skip_private)
+
+
 @pytest.fixture
 def synthetic_csv_path():
     return SYNTHETIC_CSV_PATH
@@ -30,4 +57,5 @@ def sparse_csv_path():
 def isolate_test_environment(monkeypatch):
     """Ensure tests run in isolation with cleared credentials by default."""
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
 

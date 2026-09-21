@@ -118,8 +118,8 @@ class PredictionContext(BaseModel):
     prediction_source: Literal["xgboost", "recent_mean", "chemistry_only"]
     confidence: Literal["predictive", "exploratory", "chemistry_only", "insufficient_evidence"]
     confidence_label: str
-    r2: float
-    rmse: float = Field(ge=0)
+    r2: Optional[float] = None
+    rmse: Optional[float] = Field(default=None, ge=0)
     typesafe: TypeSafePredictionReview
 
 

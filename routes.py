@@ -150,8 +150,8 @@ async def predict(body: PredictRequest):
                     "mlPrediction": round(pred, 2),
                     "confidence": ml_meta.get("confidence", "insufficient_evidence"),
                     "confidenceLabel": ml_meta.get("confidenceLabel", "Recent baseline guidance"),
-                    "r2": ml_meta.get("r2", 0.0),
-                    "rmse": ml_meta.get("rmse", 0.0),
+                    "r2": ml_meta.get("r2"),
+                    "rmse": ml_meta.get("rmse"),
                     "typesafe": typesafe,
                 }
             raise HTTPException(
@@ -242,8 +242,7 @@ async def refresh_data(allow_deletions: bool = False):
                 cancellation_check=cancellation_check,
             )
 
-        global rag_index
-        rag_index = None  # Force RAG index to reload synchronized data on next chat
+        reload_rag_index()
         return {
             "status": "success",
             "dataset": snapshot.data_cache.get("dataset", {}),
@@ -298,10 +297,18 @@ load_env()
 rag_index = None
 
 
+def reload_rag_index():
+    global rag_index
+    rag_index = None
+    from rag_index import rebuild_index
+    rebuild_index()
+    return get_rag_index()
+
+
 def get_rag_index():
     global rag_index
     if rag_index is None:
-        index_path = "knowledge_base/rag_index.pkl"
+        index_path = os.environ.get("RAG_INDEX_PATH", "knowledge_base/rag_index.pkl")
         if os.path.exists(index_path):
             try:
                 import pickle
@@ -320,9 +327,13 @@ def ml_reliability_context(prediction_context=None) -> str:
     snapshot = state.get_snapshot()
     lines = []
     for cement_type, meta in sorted(snapshot.data_cache.get("ml", {}).items()):
+        r2_val = meta.get("r2")
+        rmse_val = meta.get("rmse")
+        r2_str = f"{r2_val:.2f}" if r2_val is not None else "n/a"
+        rmse_str = f"{rmse_val:.2f}" if rmse_val is not None else "n/a"
         lines.append(
             f"{cement_type}: {meta.get('confidenceLabel', meta.get('confidence', 'unknown'))}; "
-            f"validation R² {meta.get('r2', 'n/a')}, RMSE {meta.get('rmse', 'n/a')} MPa."
+            f"validation R² {r2_str}, RMSE {rmse_str} MPa."
         )
 
     if prediction_context is None:
@@ -344,10 +355,13 @@ def ml_reliability_context(prediction_context=None) -> str:
             review_text = "TypeSafe safe-to-show=not_reviewed"
             status = "UNREVIEWED GUIDANCE"
 
+        pred_r2 = f"{prediction_context.r2:.2f}" if prediction_context.r2 is not None else "n/a"
+        pred_rmse = f"{prediction_context.rmse:.2f}" if prediction_context.rmse is not None else "n/a"
+
         lines.append(
             f"Latest optimizer result: {prediction_context.cement_type} {prediction_context.prediction:.2f} MPa "
             f"(source: {prediction_context.prediction_source}); {prediction_context.confidence_label}; "
-            f"validation R² {prediction_context.r2}, RMSE {prediction_context.rmse} MPa; "
+            f"validation R² {pred_r2}, RMSE {pred_rmse} MPa; "
             f"{review_text}; status: {status}."
         )
 

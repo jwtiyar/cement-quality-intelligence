@@ -34,11 +34,15 @@ try {
   }
 }
 
+import { existsSync } from "node:fs";
+
 const PORT = 8517;
 const BASE = `http://127.0.0.1:${PORT}`;
 
+const pythonBin = process.env.PYTHON_BIN || (existsSync("./venv/bin/python") ? "./venv/bin/python" : "python");
+
 const server = spawn(
-  "./venv/bin/python",
+  pythonBin,
   ["-m", "uvicorn", "app:app", "--port", String(PORT), "--log-level", "warning"],
   { stdio: "ignore", env: { ...process.env, TYPESAFE_API_KEY: "" } },
 );

@@ -21,6 +21,9 @@ NUMERIC_COLS = [
 
 
 def default_csv_path() -> str:
+    env_override = os.environ.get("CEMENT_DATA_CSV")
+    if env_override:
+        return env_override
     base_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_dir, "ALL_CEMENT_DATA.csv")
 

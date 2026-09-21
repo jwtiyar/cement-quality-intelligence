@@ -24,6 +24,7 @@ class TestDatasetShape:
         import os
         assert os.path.exists(default_csv_path())
 
+    @pytest.mark.private_data
     def test_loads_rows(self, df):
         assert len(df) > 10000  # project states ~11,300 records
 
@@ -35,6 +36,7 @@ class TestDatasetShape:
         types = set(df["Cement_Type"].unique())
         assert types == set(CEMENT_TYPES)
 
+    @pytest.mark.private_data
     def test_year_range(self, df):
         assert df["Year"].min() == 2013
         assert df["Year"].max() == 2026
@@ -95,6 +97,7 @@ def test_failed_refresh_preserves_existing_csv(tmp_path, monkeypatch):
 
 
 class TestStrengthNormalization:
+    @pytest.mark.private_data
     def test_strength_28d_present(self, df):
         valid = df["Strength_28D"].dropna()
         assert len(valid) > 4000  # full historical target for reporting
@@ -125,6 +128,7 @@ class TestMlTrainingFrame:
             frame = ml_training_frame(df, t)
             assert frame["Strength_28D"].notna().all()
 
+    @pytest.mark.private_data
     def test_has_enough_samples(self, df):
         for t in CEMENT_TYPES:
             frame = ml_training_frame(df, t)

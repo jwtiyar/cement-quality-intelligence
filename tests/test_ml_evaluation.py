@@ -1,9 +1,12 @@
 """Tests for rolling, leakage-free evaluation."""
 
+import pytest
+
 from data_prep import load_and_prepare
 from ml_evaluation import rolling_evaluation
 
 
+@pytest.mark.private_data
 def test_rolling_evaluation_has_baselines_and_source_slices():
     report = rolling_evaluation(load_and_prepare(), "SRC", folds=2, test_size=120, bootstrap_samples=20)
 

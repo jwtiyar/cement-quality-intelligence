@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+import anyio
+
 import numpy as np
 import pandas as pd
 
@@ -149,15 +151,16 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
                 f"Early Strength: {se_str} | Blaine: {fin_str} | {lsf_str}"
             )
 
-    # Recent Daily Test Records (Latest 60 Daily Tests)
+    today = pd.Timestamp.now().normalize()
     lines.append("\n--- LATEST DAILY LABORATORY TEST RESULTS (MOST RECENT 60 TEST DAYS) ---")
-    lines.append("(Note: Only samples produced within the last 28 days can physically be 'Pending 28D Curing'. Older missing tests are unrecorded.)")
+    lines.append("(Note: Only samples produced within the last 28 days from today can physically be 'Pending 28D Curing'. Older missing tests are unrecorded.)")
     recent_60 = valid_df.head(60)
     for _, row in recent_60.iterrows():
         d_str = str(row["Date_str"])
         ctype = row["Cement_Type"]
         sample_dt = row.get("Date_dt")
-        age_days = (latest_dt - sample_dt).days if pd.notna(sample_dt) else 999
+        sample_date = pd.to_datetime(sample_dt).normalize() if pd.notna(sample_dt) else None
+        age_days = (today - sample_date).days if sample_date is not None else 999
 
         s28_raw = row.get("Strength_28D")
         if pd.notna(s28_raw):
@@ -342,7 +345,20 @@ def reload_from_csv(csv_path: str | None = None) -> None:
             print(f"Failed to restore from backup: {e}")
 
     print("Loading and cleaning dataset...")
-    df = load_and_prepare(path)
+    try:
+        df = load_and_prepare(path)
+    except Exception as e:
+        if os.path.exists(path + ".bak"):
+            print(f"Warning: Primary CSV '{path}' corrupted or failed to load ({e}); attempting restore from backup...")
+            try:
+                shutil.copyfile(path + ".bak", path)
+                df = load_and_prepare(path)
+                print(f"Restored primary dataset from backup after corruption: {path}.bak")
+            except Exception as e2:
+                print(f"Failed to restore from backup after corruption: {e2}")
+                raise e2 from e
+        else:
+            raise
 
     # Cold startup ML training resilience: failures in ML do not take down the server
     models: dict[str, Any] = {}
@@ -356,8 +372,8 @@ def reload_from_csv(csv_path: str | None = None) -> None:
                 "confidence": "insufficient_evidence",
                 "confidenceLabel": "ML unavailable (startup training error)",
                 "hasModel": False,
-                "r2": 0.0,
-                "rmse": 0.0,
+                "r2": None,
+                "rmse": None,
                 "averages": {feat: float(df[feat].mean()) if feat in df.columns else 0.0 for feat in ML_FEATURES},
             }
 
@@ -385,64 +401,72 @@ def reload_from_csv(csv_path: str | None = None) -> None:
     print(f"State initialized: {len(df)} records, version {snapshot.dataset_version}")
 
 
+def _stage_refresh_sync(
+    staging_csv: str,
+    allow_deletions: bool,
+    active_csv: str | None,
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]]:
+    """Synchronous worker that performs extraction and training purely in staging.
+
+    Runs in a worker thread and strictly does NOT touch active_csv, .bak, or global state.
+    """
+    from build_dataset import extract_data
+
+    extract_data(
+        target_path=staging_csv,
+        allow_deletions=allow_deletions,
+        existing_csv_path=active_csv if (active_csv and os.path.exists(active_csv)) else None,
+    )
+    df_new = load_and_prepare(staging_csv)
+    models_new, ml_data_new = train_all_models(df_new)
+    return df_new, models_new, ml_data_new
+
+
 async def refresh_dataset_transactional(
     allow_deletions: bool = False,
     cancellation_check: Callable[[], bool] | None = None,
 ) -> AppStateSnapshot:
     """
     Transactional refresh:
-    Extract to staging, validate, retrain models, verify timeout status,
-    preserve recoverable .bak, and atomically swap snapshot and files.
-    If any step fails, active snapshot and files remain untouched.
+    Worker thread extracts and trains purely in staging.
+    On the request side, verify deadline/cancellation, preserve recoverable .bak,
+    atomically swap files and snapshot, and rebuild RAG index from latest_daily_results.txt.
+    If any step fails, disk rolls back to .bak and previous snapshot is preserved.
     """
     global _current_snapshot, data_cache, xgb_models, df_global
 
-    from build_dataset import extract_data
+    from rag_index import rebuild_index
 
     active_csv = default_csv_path()
-    staging_csv = active_csv + ".staging"
+    refresh_token = hashlib.sha256(f"{datetime.now(timezone.utc).isoformat()}:{os.getpid()}".encode()).hexdigest()[:8]
+    staging_csv = f"{active_csv}.staging.{refresh_token}"
     bak_csv = active_csv + ".bak"
 
     async with _refresh_lock:
+        committed = False
         try:
-            # 1. Staging extraction and deletion validation
-            extract_data(
-                target_path=staging_csv,
-                allow_deletions=allow_deletions,
-                existing_csv_path=active_csv if os.path.exists(active_csv) else None,
+            # 1. Staging extraction and training on background worker thread
+            df_new, models_new, ml_data_new = await anyio.to_thread.run_sync(
+                _stage_refresh_sync, staging_csv, allow_deletions, active_csv
             )
 
-            # 2. In-memory preparation & model training against candidate
-            df_new = load_and_prepare(staging_csv)
-            models_new, ml_data_new = train_all_models(df_new)
-
-            # 3. Check for caller timeout/cancellation before commit
+            # 2. Check for caller timeout/cancellation before commit
             if cancellation_check and cancellation_check():
                 if os.path.exists(staging_csv):
-                    os.remove(staging_csv)
+                    try:
+                        os.remove(staging_csv)
+                    except Exception:
+                        pass
                 raise asyncio.CancelledError("Refresh operation timed out before commit step.")
 
-            # 4. Safe backup preservation
-            if os.path.exists(active_csv):
-                shutil.copyfile(active_csv, bak_csv)
-
-            # 5. Atomic file replacement
-            os.replace(staging_csv, active_csv)
-
-            # 6. Synchronize text summary and RAG index
-            try:
-                write_dataset_summary_to_file(df_new)
-            except Exception as e:
-                print(f"Warning: failed to write refreshed dataset summary: {e}")
-
-            # 7. Atomic in-memory snapshot publication
+            # 3. Pre-build candidate snapshot in memory before touching disk
             refresh_meta = {
                 "status": "success",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": None,
                 "records": len(df_new),
             }
-            new_snapshot = _build_cache_and_snapshot(
+            candidate_snapshot = _build_cache_and_snapshot(
                 df=df_new,
                 csv_path=active_csv,
                 models=models_new,
@@ -450,21 +474,44 @@ async def refresh_dataset_transactional(
                 refresh_meta=refresh_meta,
             )
 
-            _current_snapshot = new_snapshot
-            df_global = new_snapshot.df
-            xgb_models = new_snapshot.xgb_models
-            data_cache = new_snapshot.data_cache
+            # 4. Safe backup preservation
+            if os.path.exists(active_csv):
+                shutil.copyfile(active_csv, bak_csv)
 
-            print(f"Refresh completed successfully: {len(df_new)} records, version {new_snapshot.dataset_version}")
-            return new_snapshot
+            # 5. Atomic file replacement
+            os.replace(staging_csv, active_csv)
+            committed = True
 
-        except Exception as e:
+            # 6. Synchronize text summary and RAG index from latest_daily_results.txt
+            write_dataset_summary_to_file(df_new)
+            rebuild_index()
+
+            # 7. Atomic in-memory snapshot publication
+            _current_snapshot = candidate_snapshot
+            df_global = candidate_snapshot.df
+            xgb_models = candidate_snapshot.xgb_models
+            data_cache = candidate_snapshot.data_cache
+
+            print(f"Refresh completed successfully: {len(df_new)} records, version {candidate_snapshot.dataset_version}")
+            return candidate_snapshot
+
+        except (Exception, asyncio.CancelledError, BaseException) as e:
+            # If disk was replaced, but summary/RAG/snapshot publication failed,
+            # roll back active_csv from bak_csv immediately.
+            if committed and os.path.exists(bak_csv):
+                try:
+                    shutil.copyfile(bak_csv, active_csv)
+                    print(f"Rolled back active CSV from {bak_csv} due to post-replace failure: {e}")
+                except Exception as rb_err:
+                    print(f"CRITICAL: Failed to roll back active CSV from backup: {rb_err}")
+
             # Clean up temporary staging file on failure
             if os.path.exists(staging_csv):
                 try:
                     os.remove(staging_csv)
                 except Exception:
                     pass
+
             # Record failure status in existing snapshot metadata without losing active state
             if _current_snapshot is not None:
                 updated_meta = {
@@ -472,7 +519,6 @@ async def refresh_dataset_transactional(
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "error": str(e),
                 }
-                # Create a shallow updated snapshot preserving active data/models
                 _current_snapshot = AppStateSnapshot(
                     df=_current_snapshot.df,
                     xgb_models=_current_snapshot.xgb_models,

@@ -104,12 +104,13 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 
 ## ARCHITECTURE & CONCURRENCY CONSTRAINTS
 
-### Single-Worker Deployment
-- **CRITICAL CONSTRAINT**: The production server MUST be started as a single process:
+### Single-Worker Deployment & Localhost Binding
+- **CRITICAL CONSTRAINTS**: The production server MUST be started as a single process bound to localhost by default:
   ```bash
-  uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
+  uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1
   ```
-- **Rationale**: State synchronization, the transactional data refresh lock (`asyncio.Lock`), and atomic in-memory snapshot switches (`AppStateSnapshot`) are coordinated within the Python process memory space. Running multiple worker processes (`--workers > 1`) would cause split-brain data state and inconsistent cache refreshes unless backed by an external distributed lock and shared cache (e.g. Redis).
+- **Security Rationale**: The application is designed for internal plant laboratory operation without built-in authentication. Binding to `127.0.0.1` prevents unauthenticated exposure to the external local area network. Any external access must be fronted by an authenticated reverse proxy (e.g. Nginx, Caddy with TLS/auth).
+- **Concurrency Rationale**: State synchronization, the transactional data refresh lock (`asyncio.Lock`), and atomic in-memory snapshot switches (`AppStateSnapshot`) are coordinated within the Python process memory space. Running multiple worker processes (`--workers > 1`) would cause split-brain data state and inconsistent cache refreshes unless backed by an external distributed lock and shared cache (e.g. Redis).
 
 ### Immutability & Snapshot Semantics
 - `AppStateSnapshot` encapsulates the active dataframe, trained models, data cache, and dataset version.

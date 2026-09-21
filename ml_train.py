@@ -27,7 +27,6 @@ MIN_TRAIN_SAMPLES = 100
 PREDICTIVE_R2 = 0.50
 EXPLORATORY_R2 = 0.25
 
-
 def model_confidence(r2: float) -> str:
     if r2 >= PREDICTIVE_R2:
         return "predictive"
@@ -38,6 +37,8 @@ def model_confidence(r2: float) -> str:
 
 def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dict[str, Any]]:
     """Retrain every cement-type model from the current dataframe."""
+    from ml_evaluation import rolling_evaluation
+
     models: dict[str, xgb.XGBRegressor] = {}
     ml_data: dict[str, Any] = {}
 
@@ -48,12 +49,17 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             # Keep small synthetic callers and older prepared frames compatible.
             df_sub = df_sub.copy()
             df_sub["Strength_28D_Source"] = "unknown"
-        df_ml = df_sub[ML_FEATURES + ["Strength_28D", "Date_str", "Strength_28D_Source"]].dropna()
+
+        cols_to_keep = ML_FEATURES + ["Strength_28D", "Date_str", "Strength_28D_Source"]
+        if "Availability_Date_28D" in df_sub.columns:
+            cols_to_keep.append("Availability_Date_28D")
+        df_ml = df_sub[cols_to_keep].dropna()
 
         r2, rmse = 0.0, 0.0
         validation_mae = None
         baseline_mae = None
         model_beats_baseline = False
+        promo_decision: dict[str, Any] = {"promoted": False, "reason": "Insufficient samples"}
         feature_importances: dict[str, float] = {}
         feature_averages = (
             {feat: float(df_ml[feat].mean()) for feat in ML_FEATURES}
@@ -72,6 +78,11 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 recent_average = float(df_ml["Strength_28D"].tail(min(100, len(df_ml))).mean())
 
         if len(df_ml) >= MIN_TRAIN_SAMPLES:
+            # Multi-fold out-of-time rolling evaluation establishes promotion decision
+            eval_report = rolling_evaluation(df, c_type, folds=3, bootstrap_samples=50)
+            promo_decision = eval_report.get("promotionDecision", {})
+            model_beats_baseline = bool(promo_decision.get("promoted", False))
+
             # Chronological split with calendar-aware 28-day curing delay:
             # Predictions for validation samples are made when the sample is 2 days old.
             # Training samples must have their 28-day strength test physically available
@@ -118,8 +129,6 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 baseline_rmse = float(_rmse_fn(y_test, y_base))
                 baseline_r2 = float(r2_score(y_test, y_base))
 
-                # Promotion policy: Model must beat baseline MAE by at least 5% margin AND achieve R2 > 0.25
-                model_beats_baseline = (validation_mae <= baseline_mae * 0.95) and (r2 > 0.25)
                 models[c_type] = model
                 feature_importances = {
                     feat: float(imp) for feat, imp in zip(ML_FEATURES, model.feature_importances_)
@@ -130,10 +139,18 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         else:
             print(f"[{c_type}] Not enough 28-day records to train ({len(df_ml)} rows).")
 
-        confidence = model_confidence(r2) if model_beats_baseline else "chemistry_only"
-        # When model is not promoted, honestly report the baseline's own error measurements
-        reported_r2 = round(r2, 3) if model_beats_baseline else (round(baseline_r2, 3) if baseline_mae is not None else 0.0)
-        reported_rmse = round(rmse, 2) if model_beats_baseline else (round(baseline_rmse, 2) if baseline_mae is not None else 0.0)
+        if baseline_mae is None:
+            confidence = "insufficient_evidence"
+            reported_r2 = None
+            reported_rmse = None
+        elif model_beats_baseline:
+            confidence = model_confidence(r2)
+            reported_r2 = round(r2, 3)
+            reported_rmse = round(rmse, 2)
+        else:
+            confidence = "chemistry_only"
+            reported_r2 = round(baseline_r2, 3)
+            reported_rmse = round(baseline_rmse, 2)
 
         ml_data[c_type] = {
             "r2": reported_r2,
@@ -141,9 +158,10 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             "validationMae": round(validation_mae, 3) if validation_mae is not None else None,
             "recentBaselineMae": round(baseline_mae, 3) if baseline_mae is not None else None,
             "recentBaselineRmse": round(baseline_rmse, 2) if baseline_mae is not None else None,
-            "modelR2": round(r2, 3),
-            "modelRmse": round(rmse, 2),
+            "modelR2": round(r2, 3) if c_type in models else None,
+            "modelRmse": round(rmse, 2) if c_type in models else None,
             "modelBeatsRecentBaseline": model_beats_baseline,
+            "promotionDecision": promo_decision,
             "importances": feature_importances,
             "averages": feature_averages,
             "recentAverage": round(recent_average, 3) if recent_average is not None else None,

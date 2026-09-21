@@ -901,17 +901,23 @@ function setupMLPredictor() {
                         baseDateObj.setDate(baseDateObj.getDate() + 28);
 
                         const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
-                        dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
-
-                        // Check if actual result is currently displayed
                         const hasActual = actualResultBox && actualResultBox.style.display !== 'none';
+
                         if (hasActual) {
                             dateLabel.innerText = 'Actual Break Date:';
+                            dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
                             dateBox.style.background = 'var(--status-info-bg)';
                             dateBox.style.borderColor = 'var(--status-info-border)';
                             dateVal.style.color = 'var(--status-info)';
+                        } else if (baseDateObj < new Date()) {
+                            dateLabel.innerText = '28-Day Test Status:';
+                            dateVal.innerText = 'Unrecorded test';
+                            dateBox.style.background = 'var(--status-warning-bg, #fef3c7)';
+                            dateBox.style.borderColor = 'var(--status-warning-border, #f59e0b)';
+                            dateVal.style.color = 'var(--status-warning, #b45309)';
                         } else {
                             dateLabel.innerText = 'Expected 28-Day Break Date:';
+                            dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
                             dateBox.style.background = 'var(--status-nominal-bg)';
                             dateBox.style.borderColor = 'var(--status-nominal-border)';
                             dateVal.style.color = 'var(--status-nominal)';
