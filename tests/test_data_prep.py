@@ -19,6 +19,12 @@ def df():
     return load_and_prepare()
 
 
+def test_uses_synthetic_csv_by_default(request, synthetic_csv_path):
+    if request.config.getoption("--run-private-data"):
+        pytest.skip("Private dataset was explicitly selected")
+    assert default_csv_path() == synthetic_csv_path
+
+
 class TestDatasetShape:
     def test_csv_exists(self):
         import os

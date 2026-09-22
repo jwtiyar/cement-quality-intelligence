@@ -10,6 +10,7 @@ import calendar
 import hashlib
 import os
 import shutil
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -435,7 +436,7 @@ async def refresh_dataset_transactional(
     """
     global _current_snapshot, data_cache, xgb_models, df_global
 
-    from rag_index import rebuild_index
+    import rag_index
 
     active_csv = default_csv_path()
     refresh_token = hashlib.sha256(f"{datetime.now(timezone.utc).isoformat()}:{os.getpid()}".encode()).hexdigest()[:8]
@@ -444,11 +445,24 @@ async def refresh_dataset_transactional(
 
     async with _refresh_lock:
         committed = False
+        abandoned = threading.Event()
+        auxiliary_backups: dict[str, str | None] = {}
+        stage_task: asyncio.Task | None = None
+
+        def stage():
+            try:
+                return _stage_refresh_sync(staging_csv, allow_deletions, active_csv)
+            finally:
+                if abandoned.is_set() and os.path.exists(staging_csv):
+                    os.remove(staging_csv)
+
         try:
             # 1. Staging extraction and training on background worker thread
-            df_new, models_new, ml_data_new = await anyio.to_thread.run_sync(
-                _stage_refresh_sync, staging_csv, allow_deletions, active_csv
-            )
+            stage_task = asyncio.create_task(anyio.to_thread.run_sync(stage, abandon_on_cancel=True))
+            # This host can miss a worker-thread wakeup; the bounded wait keeps refresh responsive.
+            while not stage_task.done():
+                await asyncio.wait({stage_task}, timeout=0.25)
+            df_new, models_new, ml_data_new = stage_task.result()
 
             # 2. Check for caller timeout/cancellation before commit
             if cancellation_check and cancellation_check():
@@ -474,6 +488,13 @@ async def refresh_dataset_transactional(
                 refresh_meta=refresh_meta,
             )
 
+            # Keep the assistant's published files paired with the active CSV.
+            for path in ("knowledge_base/latest_daily_results.txt", rag_index.INDEX_PATH):
+                backup = f"{path}.refresh.{refresh_token}.bak" if os.path.isfile(path) else None
+                if backup:
+                    shutil.copyfile(path, backup)
+                auxiliary_backups[path] = backup
+
             # 4. Safe backup preservation
             if os.path.exists(active_csv):
                 shutil.copyfile(active_csv, bak_csv)
@@ -484,7 +505,7 @@ async def refresh_dataset_transactional(
 
             # 6. Synchronize text summary and RAG index from latest_daily_results.txt
             write_dataset_summary_to_file(df_new)
-            rebuild_index()
+            rag_index.rebuild_index()
 
             # 7. Atomic in-memory snapshot publication
             _current_snapshot = candidate_snapshot
@@ -496,6 +517,9 @@ async def refresh_dataset_transactional(
             return candidate_snapshot
 
         except (Exception, asyncio.CancelledError, BaseException) as e:
+            abandoned.set()
+            if stage_task is not None and not stage_task.done():
+                stage_task.cancel()
             # If disk was replaced, but summary/RAG/snapshot publication failed,
             # roll back active_csv from bak_csv immediately.
             if committed and os.path.exists(bak_csv):
@@ -504,6 +528,15 @@ async def refresh_dataset_transactional(
                     print(f"Rolled back active CSV from {bak_csv} due to post-replace failure: {e}")
                 except Exception as rb_err:
                     print(f"CRITICAL: Failed to roll back active CSV from backup: {rb_err}")
+            if committed:
+                for path, backup in auxiliary_backups.items():
+                    try:
+                        if backup:
+                            os.replace(backup, path)
+                        elif os.path.exists(path):
+                            os.remove(path)
+                    except Exception as rb_err:
+                        print(f"CRITICAL: Failed to roll back {path}: {rb_err}")
 
             # Clean up temporary staging file on failure
             if os.path.exists(staging_csv):
@@ -529,3 +562,10 @@ async def refresh_dataset_transactional(
                 )
                 data_cache = _current_snapshot.data_cache
             raise
+        finally:
+            for backup in auxiliary_backups.values():
+                if backup and os.path.exists(backup):
+                    try:
+                        os.remove(backup)
+                    except OSError as cleanup_err:
+                        print(f"Warning: Could not remove refresh backup {backup}: {cleanup_err}")

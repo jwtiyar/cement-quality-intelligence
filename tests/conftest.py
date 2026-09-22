@@ -30,7 +30,7 @@ def pytest_configure(config):
         "markers", "private_data: mark test as requiring the private production CSV"
     )
     if not config.getoption("--run-private-data", default=False):
-        os.environ.setdefault("CEMENT_DATA_CSV", SYNTHETIC_CSV_PATH)
+        os.environ["CEMENT_DATA_CSV"] = SYNTHETIC_CSV_PATH
 
 
 def pytest_collection_modifyitems(config, items):
@@ -57,5 +57,4 @@ def sparse_csv_path():
 def isolate_test_environment(monkeypatch):
     """Ensure tests run in isolation with cleared credentials by default."""
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
-
 

@@ -300,8 +300,6 @@ rag_index = None
 def reload_rag_index():
     global rag_index
     rag_index = None
-    from rag_index import rebuild_index
-    rebuild_index()
     return get_rag_index()
 
 

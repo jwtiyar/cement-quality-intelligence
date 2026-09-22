@@ -17,6 +17,11 @@ from routes import get_rag_index, reload_rag_index, router
 from tests.conftest import SYNTHETIC_CSV_PATH, SPARSE_CSV_PATH
 
 
+@pytest.fixture(autouse=True)
+def isolate_assistant_files(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+
 class TestCrashRecovery:
     def test_missing_csv_restores_from_backup(self, tmp_path):
         active_csv = str(tmp_path / "data.csv")
@@ -106,20 +111,26 @@ class TestTransactionalRefreshAndTimeout:
             assert os.path.getmtime(active_csv) == initial_mtime
             assert state.get_snapshot().dataset_version == initial_version
             assert len(state.get_snapshot().df) == len(initial_snapshot.df)
+            assert not list(tmp_path.glob("*.staging.*"))
 
         asyncio.run(_run())
 
     def test_post_replace_failure_rolls_back_disk_to_backup(self, tmp_path, monkeypatch):
+        active_csv = str(tmp_path / "ALL_CEMENT_DATA.csv")
+        shutil.copyfile(SYNTHETIC_CSV_PATH, active_csv)
+        monkeypatch.setenv("CEMENT_DATA_CSV", active_csv)
+
+        state.reload_from_csv(active_csv)
+        original_snapshot = state.get_snapshot()
+        original_summary = (tmp_path / "knowledge_base/latest_daily_results.txt").read_bytes()
+        rebuild_index()
+        index_path = tmp_path / "knowledge_base/rag_index.pkl"
+        original_index = index_path.read_bytes()
+
         async def _run():
-            active_csv = str(tmp_path / "ALL_CEMENT_DATA.csv")
-            shutil.copyfile(SYNTHETIC_CSV_PATH, active_csv)
-            monkeypatch.setenv("CEMENT_DATA_CSV", active_csv)
-
-            state.reload_from_csv(active_csv)
-            original_snapshot = state.get_snapshot()
-
             # Mock rebuild_index to fail AFTER os.replace has occurred
             def broken_rebuild():
+                index_path.write_bytes(b"incomplete candidate index")
                 raise RuntimeError("Simulated RAG rebuild catastrophic failure")
 
             monkeypatch.setattr("rag_index.rebuild_index", broken_rebuild)
@@ -134,13 +145,15 @@ class TestTransactionalRefreshAndTimeout:
             monkeypatch.setattr(state, "_stage_refresh_sync", custom_staging)
 
             with pytest.raises(RuntimeError, match="Simulated RAG rebuild"):
-                await state.refresh_dataset_transactional()
+                await asyncio.wait_for(state.refresh_dataset_transactional(), timeout=5)
 
             # Verify active_csv was rolled back to original 360 rows from .bak
             df_active = load_and_prepare(active_csv)
             assert len(df_active) == 360
             # Active snapshot was preserved
             assert state.get_snapshot().dataset_version == original_snapshot.dataset_version
+            assert (tmp_path / "knowledge_base/latest_daily_results.txt").read_bytes() == original_summary
+            assert index_path.read_bytes() == original_index
 
         asyncio.run(_run())
 
@@ -168,6 +181,10 @@ class TestAssistantFreshnessAndRag:
         rebuild_index()
         assert os.path.exists(rag_index_path)
 
+        def unexpected_rebuild():
+            raise AssertionError("Reload must use the committed index, not rebuild it")
+
+        monkeypatch.setattr("rag_index.rebuild_index", unexpected_rebuild)
         idx = reload_rag_index()
         assert idx is not None
         assert any(unique_marker in c["text"] for c in idx["chunks"])
