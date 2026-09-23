@@ -7,6 +7,7 @@ integrity during refresh.
 from __future__ import annotations
 
 import calendar
+from collections import Counter
 import os
 from typing import Any
 import pandas as pd
@@ -14,6 +15,41 @@ import pandas as pd
 
 class UnexplainedDataLossError(RuntimeError):
     """Raised when a candidate scan would silently delete existing historical records."""
+
+
+def _historical_changes(old_df: pd.DataFrame, new_df: pd.DataFrame) -> list[str]:
+    """Find missing records or previously recorded measurements in a new scan."""
+    key_cols = ["Date", "Cement_Type"]
+    old_keys = Counter(old_df[key_cols].astype(str).itertuples(index=False, name=None))
+    new_keys = Counter(new_df[key_cols].astype(str).itertuples(index=False, name=None))
+    missing = old_keys - new_keys
+    problems = [f"{sum(missing.values())} missing records"] if missing else []
+
+    metadata = {"Date", "Cement_Type", "Year", "Month_Num", "Excel_Date", "Source_File", "Source_Sheet", "Source_Column_28D"}
+    for column in old_df.columns:
+        if column in metadata or column.startswith("Excel_") or column.startswith("Source_"):
+            continue
+        old_values = pd.to_numeric(old_df[column], errors="coerce")
+        if not old_values.notna().any():
+            continue
+        new_values = (
+            pd.to_numeric(new_df[column], errors="coerce")
+            if column in new_df else pd.Series(float("nan"), index=new_df.index)
+        )
+
+        def values(frame: pd.DataFrame, numeric: pd.Series) -> Counter:
+            rows = frame.loc[numeric.notna(), key_cols].astype(str)
+            return Counter(
+                (date, cement_type, format(value, ".10g"))
+                for (date, cement_type), value in zip(
+                    rows.itertuples(index=False, name=None), numeric[numeric.notna()]
+                )
+            )
+
+        lost_values = values(old_df, old_values) - values(new_df, new_values)
+        if lost_values:
+            problems.append(f"{column}: {sum(lost_values.values())} changed or missing values")
+    return problems
 
 
 def get_days_in_month(year: int, month: int) -> int:
@@ -111,26 +147,22 @@ def extract_data(
 
     all_records: list[dict[str, Any]] = []
     errors: list[str] = []
-    found_years: list[int] = []
 
     for year in years:
         year_dir = os.path.join(parent_dir, str(year))
         if not os.path.exists(year_dir):
             continue
 
-        excel_file = None
-        for f in os.listdir(year_dir):
-            if f.endswith(".xlsx") and not f.startswith("~$"):
-                if year == 2016 and "FIXED" in f:
-                    excel_file = f
-                    break
-                elif year != 2016:
-                    excel_file = f
-                    break
-
-        if not excel_file:
+        workbooks = sorted(f for f in os.listdir(year_dir) if f.endswith(".xlsx") and not f.startswith("~$"))
+        if not workbooks:
             continue
-        found_years.append(year)
+        if year == 2016:
+            workbooks = [f for f in workbooks if "FIXED" in f.upper()]
+            if not workbooks:
+                raise RuntimeError("2016 FIXED workbook is missing; existing CSV was preserved.")
+        if len(workbooks) != 1:
+            raise RuntimeError(f"Multiple workbooks found for {year}; choose one before refreshing: {workbooks}")
+        excel_file = workbooks[0]
         file_path = os.path.join(year_dir, excel_file)
 
         try:
@@ -180,30 +212,30 @@ def extract_data(
     # Clean rows lacking core chemical oxides
     chem_cols = ["SiO2", "Al2O3", "Fe2O3", "CaO"]
     for col in chem_cols:
-        if col in final_df.columns:
-            final_df = final_df.dropna(subset=[col])
-            final_df = final_df[final_df[col].astype(str).str.strip() != ""]
+        if col not in final_df.columns:
+            raise RuntimeError(f"Dataset refresh aborted: required column {col} is missing.")
+        final_df = final_df.dropna(subset=[col])
+        final_df = final_df[final_df[col].astype(str).str.strip() != ""]
+    if final_df.empty:
+        raise RuntimeError("Dataset refresh aborted: no records have the required oxide measurements.")
 
     # Validation against existing dataset: detect unexplained data loss
     ref_csv = existing_csv_path or os.path.join(app_dir, "ALL_CEMENT_DATA.csv")
     if os.path.exists(ref_csv):
         try:
             old_df = pd.read_csv(ref_csv)
-            if not old_df.empty and "Date" in old_df.columns and "Cement_Type" in old_df.columns:
-                old_keys = set(old_df["Date"].astype(str) + "_" + old_df["Cement_Type"].astype(str))
-                new_keys = set(final_df["Date"].astype(str) + "_" + final_df["Cement_Type"].astype(str))
-                missing_keys = old_keys - new_keys
-                if missing_keys and not allow_deletions:
-                    raise UnexplainedDataLossError(
-                        f"Dataset refresh aborted: {len(missing_keys)} previously existing sample records would be lost. "
-                        f"Scanned years: {found_years}. Set allow_deletions=True to explicitly confirm removal. "
-                        f"Example missing keys: {list(missing_keys)[:5]}"
-                    )
+            if old_df.empty or not {"Date", "Cement_Type"}.issubset(old_df.columns):
+                raise ValueError("active dataset is empty or lacks Date/Cement_Type columns")
+            changes = _historical_changes(old_df, final_df)
+            if changes and not allow_deletions:
+                raise UnexplainedDataLossError(
+                    "Dataset refresh aborted; existing records or measurements changed. "
+                    f"Review the source workbooks before overriding with allow_deletions=True. Details: {'; '.join(changes[:8])}"
+                )
         except UnexplainedDataLossError:
             raise
         except Exception as e:
-            # If reading old CSV failed, log warning but don't crash
-            print(f"Warning: could not inspect existing CSV for comparison: {e}")
+            raise RuntimeError(f"Dataset refresh aborted: could not validate existing CSV: {e}") from e
 
     out_path = target_path or os.path.join(app_dir, "ALL_CEMENT_DATA.csv")
     tmp_path = out_path + ".tmp"

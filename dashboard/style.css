@@ -949,6 +949,19 @@ tbody tr:hover td {
     font-weight: 500;
 }
 
+.prediction-result .label small {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 400;
+}
+
+.prediction-result--model {
+    border-color: var(--panel-border) !important;
+    background: var(--panel-muted) !important;
+}
+
 .prediction-result .value {
     color: var(--text-primary) !important;
     font-family: var(--font-mono);

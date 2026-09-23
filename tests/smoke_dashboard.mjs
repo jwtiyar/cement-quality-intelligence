@@ -11,7 +11,11 @@
  * pytest suite — run manually: `node tests/smoke_dashboard.mjs`.
  */
 import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -34,17 +38,28 @@ try {
   }
 }
 
-import { existsSync } from "node:fs";
-
 const PORT = 8517;
 const BASE = `http://127.0.0.1:${PORT}`;
 
-const pythonBin = process.env.PYTHON_BIN || (existsSync("./venv/bin/python") ? "./venv/bin/python" : "python");
+const appDir = fileURLToPath(new URL("../", import.meta.url));
+const venvPython = join(appDir, "venv/bin/python");
+const pythonBin = process.env.PYTHON_BIN || (existsSync(venvPython) ? venvPython : "python");
+const syntheticCsv = fileURLToPath(new URL("./fixtures/synthetic_cement_data.csv", import.meta.url));
+const smokeDir = mkdtempSync(join(tmpdir(), "cement-smoke-"));
 
 const server = spawn(
   pythonBin,
   ["-m", "uvicorn", "app:app", "--port", String(PORT), "--log-level", "warning"],
-  { stdio: "ignore", env: { ...process.env, TYPESAFE_API_KEY: "" } },
+  {
+    cwd: smokeDir,
+    stdio: "ignore",
+    env: {
+      ...process.env,
+      PYTHONPATH: `${appDir}${process.env.PYTHONPATH ? delimiter + process.env.PYTHONPATH : ""}`,
+      CEMENT_DATA_CSV: syntheticCsv,
+      TYPESAFE_API_KEY: "",
+    },
+  },
 );
 
 async function waitForApi(url, timeoutMs) {
@@ -123,6 +138,18 @@ try {
   if (new URL(page.url()).hash !== "#ai" || await page.getAttribute("#tabBtnAI", "aria-selected") !== "true") {
     throw new Error("Strength estimate tab did not update URL and selected state");
   }
+  if (!await page.textContent("#opt_res_strength").then((text) => text.includes("MPa"))) {
+    throw new Error("Recent average was not shown before entering test values");
+  }
+  for (const [id, value] of Object.entries({
+    opt_CaO: "65", opt_SiO2: "21.5", opt_Al2O3: "5.5", opt_Fe2O3: "3.5",
+    opt_MgO: "1.5", opt_SO3: "0.8", opt_Strength_Early: "24", opt_Fineness: "3800",
+  })) await page.fill(`#${id}`, value);
+  await page.waitForFunction(() =>
+    document.getElementById("opt_res_strength").textContent.includes("MPa") &&
+    document.getElementById("opt_res_model_strength").textContent.includes("MPa"),
+    { timeout: 30_000 },
+  );
 
   await page.click("#tabBtnRawMix");
   if (new URL(page.url()).hash !== "#rawmix" || await page.getAttribute("#tabBtnRawMix", "aria-selected") !== "true") {
@@ -184,6 +211,8 @@ try {
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await mobile.goto(`${BASE}/#analytics`, { waitUntil: "load" });
+  await mobile.click("#tabBtnAI");
+  if (!await mobile.isVisible("#modelPredictionResult")) throw new Error("Model estimate is not visible on mobile");
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 1) throw new Error(`Mobile page overflows horizontally by ${overflow}px`);
   await mobile.click("#tabBtnRawMix");
@@ -195,4 +224,5 @@ try {
 } finally {
   if (browser) await browser.close().catch(() => {});
   server.kill();
+  rmSync(smokeDir, { recursive: true, force: true });
 }

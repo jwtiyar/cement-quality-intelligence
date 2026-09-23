@@ -28,6 +28,20 @@ import state
 from typesafe_ai import assess_prediction, judge_rawmix, rerank_contexts
 
 router = APIRouter()
+CHAT_TIMEOUT_SECONDS = 35.0
+
+
+async def _typesafe_call(fn, *args):
+    if not os.environ.get("TYPESAFE_API_KEY"):
+        return fn(*args)
+    task = asyncio.create_task(anyio.to_thread.run_sync(fn, *args, abandon_on_cancel=True))
+    try:
+        while not task.done():
+            await asyncio.wait({task}, timeout=0.05)
+        return task.result()
+    finally:
+        if not task.done():
+            task.cancel()
 
 
 @router.get("/api/data")
@@ -147,7 +161,8 @@ async def predict(body: PredictRequest):
                     "prediction": round(pred, 2),
                     "prediction_source": "recent_mean",
                     "predictionSource": "recent_mean",
-                    "mlPrediction": round(pred, 2),
+                    "recentAverage": round(pred, 2),
+                    "mlPrediction": None,
                     "confidence": ml_meta.get("confidence", "insufficient_evidence"),
                     "confidenceLabel": ml_meta.get("confidenceLabel", "Recent baseline guidance"),
                     "r2": ml_meta.get("r2"),
@@ -186,18 +201,20 @@ async def predict(body: PredictRequest):
             "status": "not_reviewed",
         }
         if not use_recent_baseline:
-            typesafe = assess_prediction(
-                cement_type=c_type,
-                prediction=pred,
-                confidence=ml_meta["confidence"],
-                r2=ml_meta["r2"],
-                rmse=ml_meta["rmse"],
+            typesafe = await _typesafe_call(
+                assess_prediction,
+                c_type,
+                pred,
+                ml_meta["confidence"],
+                ml_meta["r2"],
+                ml_meta["rmse"],
             )
 
         return {
             "prediction": round(pred, 2),
             "prediction_source": prediction_source,
             "predictionSource": prediction_source,
+            "recentAverage": round(float(ml_meta["recentAverage"]), 2) if ml_meta.get("recentAverage") is not None else None,
             "mlPrediction": round(ml_prediction, 2),
             "confidence": ml_meta["confidence"],
             "confidenceLabel": confidence_label,
@@ -215,10 +232,11 @@ async def predict(body: PredictRequest):
 async def rawmix_calculate(body: RawMixRequest):
     try:
         result = calculate_rawmix(body.model_dump())
-        result["typesafe"] = judge_rawmix(
-            cement_type=body.cement_type,
-            clinker=result["clinker"],
-            diagnostics=result["diagnostics"],
+        result["typesafe"] = await _typesafe_call(
+            judge_rawmix,
+            body.cement_type,
+            result["clinker"],
+            result["diagnostics"],
         )
         return result
     except ValueError as e:
@@ -385,6 +403,14 @@ def _call_gemini_sync(api_key: str, formatted_history: list, prompt: str) -> str
 @router.post("/api/chat")
 async def chat(body: ChatRequest):
     try:
+        async with asyncio.timeout(CHAT_TIMEOUT_SECONDS):
+            return await _chat_impl(body)
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Assistant request timed out after 35 seconds.")
+
+
+async def _chat_impl(body: ChatRequest):
+    try:
         message = body.message.strip()
         history = body.history
 
@@ -417,7 +443,8 @@ async def chat(body: ChatRequest):
                         "score": round(score, 3),
                     })
 
-            for candidate in rerank_contexts(message, candidates):
+            ranked = await _typesafe_call(rerank_contexts, message, candidates)
+            for candidate in ranked:
                 retrieved_contexts.append(candidate["text"])
                 sources.append({
                     "file": candidate["file"],

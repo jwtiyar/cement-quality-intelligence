@@ -1,6 +1,7 @@
 """Tests for crash recovery, transactional refresh, timeout cancellation, RAG freshness, and insufficient evidence."""
 
 import asyncio
+import hashlib
 import os
 import shutil
 import time
@@ -71,6 +72,28 @@ class TestCrashRecovery:
 
 
 class TestTransactionalRefreshAndTimeout:
+    def test_successful_refresh_publishes_the_committed_csv_version(self, tmp_path, monkeypatch):
+        active_csv = str(tmp_path / "ALL_CEMENT_DATA.csv")
+        shutil.copyfile(SYNTHETIC_CSV_PATH, active_csv)
+        monkeypatch.setenv("CEMENT_DATA_CSV", active_csv)
+        state.reload_from_csv(active_csv)
+        old_version = state.get_snapshot().dataset_version
+
+        def stage(staging_csv, allow_deletions, active_path):
+            candidate = pd.read_csv(SYNTHETIC_CSV_PATH)
+            candidate.loc[0, "CaO"] += 0.5
+            candidate.to_csv(staging_csv, index=False)
+            return load_and_prepare(staging_csv), {}, {}
+
+        monkeypatch.setattr(state, "_stage_refresh_sync", stage)
+        published = asyncio.run(state.refresh_dataset_transactional())
+
+        with open(active_csv, "rb") as csv_file:
+            committed_version = hashlib.file_digest(csv_file, "sha256").hexdigest()[:12]
+        assert committed_version != old_version
+        assert published.dataset_version == committed_version
+        assert state.get_snapshot().data_cache["dataset"]["version"] == committed_version
+
     def test_worker_finishing_after_timeout_cannot_commit(self, tmp_path, monkeypatch):
         """Worker running in threadpool finishing after request timeout must NOT commit."""
         async def _run():

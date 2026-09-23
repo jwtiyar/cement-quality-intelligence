@@ -3,11 +3,15 @@
 import os
 import re
 import asyncio
+import threading
+import time
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from sklearn.feature_extraction.text import TfidfVectorizer
 
+import routes
 import state
 from routes import ml_reliability_context, router
 from schemas import PredictionContext
@@ -57,6 +61,43 @@ BASE_MATERIALS = {
 
 
 class TestRawmixEndpoint:
+    def test_slow_typesafe_review_does_not_block_other_requests(self, monkeypatch):
+        import typesafe_ai
+
+        started = threading.Event()
+
+        def slow_review(state, questions):
+            started.set()
+            time.sleep(0.25)
+            return None
+
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        monkeypatch.setattr(typesafe_ai, "_evaluate", slow_review)
+        state.reload_from_csv()
+        app = FastAPI()
+        app.include_router(router)
+
+        async def exercise():
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+                slow = asyncio.create_task(async_client.post("/api/rawmix/calculate", json={
+                    "mode": "solve",
+                    "cement_type": "OPC",
+                    "materials": BASE_MATERIALS,
+                    "hfo": {"heat": 730, "calorific": 9800, "sulfur": 2.5},
+                    "targets": {"LSF": 95.0, "SM": 2.4, "AM": 1.5},
+                }))
+                for _ in range(100):
+                    if started.is_set():
+                        break
+                    await asyncio.sleep(0.01)
+                assert started.is_set()
+                assert not slow.done()
+                assert (await async_client.get("/api/data")).status_code == 200
+                assert (await slow).status_code == 200
+
+        asyncio.run(exercise())
+
     def test_valid_solve(self, client):
         resp = client.post("/api/rawmix/calculate", json={
             "mode": "solve",
@@ -171,7 +212,9 @@ class TestPredictEndpoint:
         body = resp.json()
         assert "prediction" in body
         assert body["predictionSource"] == "recent_mean"
-        assert "mlPrediction" in body
+        assert isinstance(body["recentAverage"], (int, float))
+        assert isinstance(body["mlPrediction"], (int, float))
+        assert body["prediction"] == body["recentAverage"]
         assert "confidence" in body
         assert body["typesafe"]["enabled"] is False
 
@@ -192,6 +235,28 @@ class TestPredictEndpoint:
 
 
 class TestChatEndpoint:
+    def test_chat_deadline_includes_typesafe_reranking(self, client, monkeypatch):
+        documents = ["strength test", "cement report"]
+        vectorizer = TfidfVectorizer().fit(documents)
+        monkeypatch.setattr(routes, "get_rag_index", lambda: {
+            "chunks": [
+                {"text": text, "source": "manual.pdf", "page": index + 1}
+                for index, text in enumerate(documents)
+            ],
+            "vectorizer": vectorizer,
+            "tfidf_matrix": vectorizer.transform(documents),
+        })
+        def slow_rerank(query, candidates):
+            time.sleep(0.2)
+            return candidates
+
+        monkeypatch.setattr(routes, "rerank_contexts", slow_rerank)
+        monkeypatch.setattr(routes, "CHAT_TIMEOUT_SECONDS", 0.05)
+
+        response = client.post("/api/chat", json={"message": "strength test", "provider": "codex"})
+
+        assert response.status_code == 504
+
     def test_empty_message_rejected_422(self, client):
         resp = client.post("/api/chat", json={"message": ""})
         assert resp.status_code == 422

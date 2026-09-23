@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from data_prep import load_and_prepare
+from ml_evaluation import rolling_evaluation
 from ml_train import (
     EXPLORATORY_R2,
     ML_FEATURES,
@@ -25,6 +26,37 @@ def models_and_meta():
 
 
 class TestModelTraining:
+    def test_displayed_metrics_are_from_the_same_rolling_policy_as_promotion(self):
+        df = load_and_prepare()
+        _, meta = train_all_models(df)
+        report = rolling_evaluation(df, "OPC", folds=3, bootstrap_samples=2)
+        source = "xgboost" if meta["OPC"]["modelBeatsRecentBaseline"] else "recent_mean"
+
+        assert meta["OPC"]["r2"] == round(report["models"][source]["r2"], 3)
+        assert meta["OPC"]["rmse"] == round(report["models"][source]["rmse"], 2)
+
+    def test_published_model_learns_newest_completed_results(self):
+        dates = pd.date_range("2026-01-01", periods=500, freq="D")
+        rows = []
+        for index, date in enumerate(dates):
+            row = {feature: 1.0 for feature in ML_FEATURES}
+            row.update(
+                Cement_Type="OPC",
+                Year=date.year,
+                Date_str=date.strftime("%Y-%m-%d"),
+                Availability_Date_28D=date + pd.Timedelta(days=28),
+                Strength_28D_Source="synthetic",
+                Strength_Early=20.0 if index < 470 else 30.0,
+                Strength_28D=40.0 if index < 470 else 60.0,
+            )
+            rows.append(row)
+
+        models, meta = train_all_models(pd.DataFrame(rows))
+        newest = pd.DataFrame([rows[-1]])[ML_FEATURES]
+        assert float(models["OPC"].predict(newest)[0]) > 50.0
+        assert 100 <= meta["OPC"]["modelTrainSamples"] < meta["OPC"]["trainSamples"]
+        assert pd.Timestamp(meta["OPC"]["modelDateRange"]["min"]) >= dates[-1] - pd.DateOffset(months=12)
+
     def test_trains_all_types(self, models_and_meta):
         _, meta = models_and_meta
         assert set(meta.keys()) == {"OPC", "SRC", "SBC"}

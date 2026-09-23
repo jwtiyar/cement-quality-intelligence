@@ -283,8 +283,13 @@
 
                     <!-- Predictions and Actual Results -->
                     <div id="predictionResult" class="prediction-result">
-                        <span class="label">Estimated 28-Day Strength</span>
-                        <span class="value" id="opt_res_strength">--</span>
+                        <span class="label">Recent 28-day average</span>
+                        <span class="value" id="opt_res_strength" aria-live="polite">--</span>
+                    </div>
+
+                    <div id="modelPredictionResult" class="prediction-result prediction-result--model">
+                        <span class="label">XGBoost estimate <small>Experimental · uses entered tests</small></span>
+                        <span class="value" id="opt_res_model_strength" aria-live="polite">--</span>
                     </div>
 
                     <div id="expectedDateBox" class="prediction-result" style="display: none; background: var(--panel-muted) !important; border-color: var(--panel-border) !important;">

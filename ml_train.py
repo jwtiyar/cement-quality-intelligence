@@ -27,6 +27,13 @@ MIN_TRAIN_SAMPLES = 100
 PREDICTIVE_R2 = 0.50
 EXPLORATORY_R2 = 0.25
 
+
+def select_model_training_window(frame: pd.DataFrame) -> pd.DataFrame:
+    """Use the latest year when it has enough completed 28-day results."""
+    latest_date = pd.to_datetime(frame["Date_str"]).max()
+    recent = frame[pd.to_datetime(frame["Date_str"]) >= latest_date - pd.DateOffset(months=12)]
+    return recent if len(recent) >= MIN_TRAIN_SAMPLES else frame
+
 def model_confidence(r2: float) -> str:
     if r2 >= PREDICTIVE_R2:
         return "predictive"
@@ -59,6 +66,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         validation_mae = None
         baseline_mae = None
         model_beats_baseline = False
+        eval_report: dict[str, Any] = {}
         promo_decision: dict[str, Any] = {"promoted": False, "reason": "Insufficient samples"}
         feature_importances: dict[str, float] = {}
         feature_averages = (
@@ -69,6 +77,8 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
 
         date_min = date_max = val_date_min = val_date_max = None
         recent_average = None
+        model_train_samples = 0
+        model_date_min = model_date_max = None
         if not df_ml.empty and "Date_str" in df_ml.columns:
             df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
             valid_dates = df_ml["Date_str"].dropna()
@@ -103,7 +113,8 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             val_date_max = str(val_df["Date_str"].iloc[-1])
 
             if len(train_df) >= 20:
-                X_train, y_train = train_df[ML_FEATURES], train_df["Strength_28D"]
+                policy_train = select_model_training_window(train_df)
+                X_train, y_train = policy_train[ML_FEATURES], policy_train["Strength_28D"]
                 X_test, y_test = val_df[ML_FEATURES], val_df["Strength_28D"]
 
                 model = xgb.XGBRegressor(
@@ -122,14 +133,19 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 rmse = float(_rmse_fn(y_test, y_pred))
                 validation_mae = float(mean_absolute_error(y_test, y_pred))
 
-                # Baseline: calculate using strictly the same calendar-available training samples
-                recent_baseline = float(y_train.tail(min(100, len(y_train))).mean())
+                # The recent-mean baseline uses all calendar-available labels.
+                recent_baseline = float(train_df["Strength_28D"].tail(min(100, len(train_df))).mean())
                 y_base = np.full(len(y_test), recent_baseline)
                 baseline_mae = float(mean_absolute_error(y_test, y_base))
                 baseline_rmse = float(_rmse_fn(y_test, y_base))
-                baseline_r2 = float(r2_score(y_test, y_base))
 
+                final_train = select_model_training_window(df_ml)
+                model.fit(final_train[ML_FEATURES], final_train["Strength_28D"])
                 models[c_type] = model
+                model_train_samples = len(final_train)
+                model_date_min = str(final_train["Date_str"].iloc[0])
+                model_date_max = str(final_train["Date_str"].iloc[-1])
+                feature_averages = {feat: float(final_train[feat].mean()) for feat in ML_FEATURES}
                 feature_importances = {
                     feat: float(imp) for feat, imp in zip(ML_FEATURES, model.feature_importances_)
                 }
@@ -139,18 +155,21 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         else:
             print(f"[{c_type}] Not enough 28-day records to train ({len(df_ml)} rows).")
 
-        if baseline_mae is None:
+        evaluated_models = eval_report.get("models", {})
+        rolling_baseline = evaluated_models.get("recent_mean")
+        rolling_model = evaluated_models.get("xgboost")
+        if baseline_mae is None or rolling_baseline is None:
             confidence = "insufficient_evidence"
             reported_r2 = None
             reported_rmse = None
         elif model_beats_baseline:
-            confidence = model_confidence(r2)
-            reported_r2 = round(r2, 3)
-            reported_rmse = round(rmse, 2)
+            confidence = model_confidence(rolling_model["r2"])
+            reported_r2 = round(rolling_model["r2"], 3)
+            reported_rmse = round(rolling_model["rmse"], 2)
         else:
             confidence = "chemistry_only"
-            reported_r2 = round(baseline_r2, 3)
-            reported_rmse = round(baseline_rmse, 2)
+            reported_r2 = round(rolling_baseline["r2"], 3)
+            reported_rmse = round(rolling_baseline["rmse"], 2)
 
         ml_data[c_type] = {
             "r2": reported_r2,
@@ -166,6 +185,8 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             "averages": feature_averages,
             "recentAverage": round(recent_average, 3) if recent_average is not None else None,
             "trainSamples": int(len(df_ml)),
+            "modelTrainSamples": model_train_samples,
+            "modelDateRange": {"min": model_date_min, "max": model_date_max},
             "targetSourceCounts": {
                 str(source): int(count)
                 for source, count in df_ml["Strength_28D_Source"].value_counts().items()

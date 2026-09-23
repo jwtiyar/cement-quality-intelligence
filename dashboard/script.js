@@ -627,7 +627,9 @@ function setupMLPredictor() {
         document.getElementById('opt_res_LSF').innerText = '--';
         document.getElementById('opt_res_SM').innerText = '--';
         document.getElementById('opt_res_AM').innerText = '--';
-        document.getElementById('opt_res_strength').innerText = '--';
+        const recentAverage = dashboardData.ml[cTypeSelect.value]?.recentAverage;
+        document.getElementById('opt_res_strength').innerText = recentAverage == null ? '--' : `${recentAverage.toFixed(1)} MPa`;
+        document.getElementById('opt_res_model_strength').innerText = '--';
         const adviceEl = document.getElementById('opt_advice');
         if (adviceEl) {
             adviceEl.innerHTML = 'Load a historical record above to start simulating and receiving AI advice...';
@@ -642,8 +644,9 @@ function setupMLPredictor() {
         const confEl = document.getElementById('modelConfidence');
         const trainEl = document.getElementById('modelTrainInfo');
 
-        r2El.innerText = `R² Score: ${(modelData.r2 * 100).toFixed(1)}%`;
-        rmseEl.innerText = `RMSE: ${modelData.rmse} MPa`;
+        const validationSource = modelData.modelBeatsRecentBaseline ? 'Validated model' : 'Recent average';
+        r2El.innerText = `${validationSource} R²: ${modelData.r2 == null ? 'n/a' : `${(modelData.r2 * 100).toFixed(1)}%`}`;
+        rmseEl.innerText = `${validationSource} RMSE: ${modelData.rmse == null ? 'n/a' : `${modelData.rmse} MPa`}`;
 
         const confColors = {
             predictive: '#10b981',
@@ -655,9 +658,9 @@ function setupMLPredictor() {
             confEl.style.color = confColors[modelData.confidence] || '#94a3b8';
         }
         if (trainEl) {
-            const dr = modelData.strengthDateRange || {};
+            const dr = modelData.modelDateRange || {};
             const range = dr.min && dr.max ? `${dr.min} → ${dr.max}` : 'n/a';
-            trainEl.innerText = `${modelData.trainSamples || 0} training rows (28D) · ${range}`;
+            trainEl.innerText = `XGBoost: ${modelData.modelTrainSamples || 0} completed 28-day tests · ${range}`;
         }
 
         if (recordData) {
@@ -794,7 +797,9 @@ function setupMLPredictor() {
             document.getElementById('opt_res_LSF').innerText = '--';
             document.getElementById('opt_res_SM').innerText = '--';
             document.getElementById('opt_res_AM').innerText = '--';
-            document.getElementById('opt_res_strength').innerText = '--';
+            const recentAverage = dashboardData.ml[cType]?.recentAverage;
+            document.getElementById('opt_res_strength').innerText = recentAverage == null ? '--' : `${recentAverage.toFixed(1)} MPa`;
+            document.getElementById('opt_res_model_strength').innerText = '--';
             document.getElementById('expectedDateBox').style.display = 'none';
             const adviceEl = document.getElementById('opt_advice');
             if (adviceEl) {
@@ -836,10 +841,12 @@ function setupMLPredictor() {
                 Strength_Early, Fineness
             };
 
-            let strengthHtml = '--';
+            const modelInputsComplete = optInputs.every(id => document.getElementById(id).value !== '');
+            let strengthHtml = modelMeta.recentAverage == null ? '--' : `${modelMeta.recentAverage.toFixed(1)} MPa`;
+            let modelHtml = modelMeta.hasModel ? 'Enter all eight tests' : 'Unavailable';
             let advice = `<strong>Chemistry Engine:</strong><br>${chem.advice}`;
 
-            if (modelMeta.hasModel) {
+            if (modelMeta.hasModel && modelInputsComplete) {
                 const res = await fetch('/api/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -848,6 +855,7 @@ function setupMLPredictor() {
                 if (!res.ok) throw new Error(`Strength prediction failed (${res.status})`);
                 const result = await res.json();
                 if (result.prediction !== undefined) {
+                    strengthHtml = result.recentAverage == null ? '--' : `${result.recentAverage.toFixed(1)} MPa`;
                     const decision = result.typesafe || {};
                     const normalizedReview = {
                         enabled: Boolean(decision.enabled),
@@ -866,16 +874,16 @@ function setupMLPredictor() {
                         typesafe: normalizedReview
                     };
                     if (normalizedReview.status === 'rejected' || normalizedReview.safe_to_show === false) {
-                        strengthHtml = `<span style="font-size:0.95rem;color:#f59e0b;">Held for qualified review — TypeSafe confidence ${(decision.probability * 100).toFixed(0)}%</span>`;
+                        modelHtml = 'Held for review';
                         advice += `<br><br><strong>TypeSafe review required before using this estimate.</strong>`;
                         document.getElementById('expectedDateBox').style.display = 'none';
                     } else {
-                        strengthHtml = `${result.prediction.toFixed(1)} <span style="font-size: 1.2rem; color: #94a3b8;">MPa</span>`;
+                        modelHtml = result.mlPrediction == null ? 'Unavailable' : `${result.mlPrediction.toFixed(1)} MPa`;
                         advice += `<br><br><strong>${result.confidenceLabel}</strong>`;
                         if (result.predictionSource === 'recent_mean') {
-                            advice += `<br>Historical XGBoost held back; recent validation favored this baseline.`;
+                            advice += `<br>The model estimate is experimental. Compare it with the recent average; neither is a lab result.`;
                         } else {
-                            advice += ` (R² ${(result.r2 * 100).toFixed(0)}%)`;
+                            advice += `<br>The model estimate is based on the entered tests.`;
                         }
                         if (normalizedReview.status === 'approved') {
                             advice += `<br><strong>TypeSafe status:</strong> Approved (${(normalizedReview.probability * 100).toFixed(0)}%)`;
@@ -927,14 +935,18 @@ function setupMLPredictor() {
                 }
             } else {
                 latestPredictionContext = null;
-                strengthHtml = `<span style="font-size:0.95rem;color:#94a3b8;">ML not used — ${modelMeta.confidenceLabel}</span>`;
                 document.getElementById('expectedDateBox').style.display = 'none';
+                if (!modelInputsComplete && modelMeta.hasModel) {
+                    advice += '<br><br>Enter all eight tests to see the model estimate.';
+                }
             }
 
-            document.getElementById('opt_res_strength').innerHTML = strengthHtml;
+            document.getElementById('opt_res_strength').innerText = strengthHtml;
+            document.getElementById('opt_res_model_strength').innerText = modelHtml;
             document.getElementById('opt_advice').innerHTML = advice;
         } catch (e) {
             console.error(e);
+            document.getElementById('opt_res_model_strength').innerText = 'Could not calculate';
         }
     }
 

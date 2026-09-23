@@ -266,9 +266,8 @@ def _build_cache_and_snapshot(
 
     latest_rec_date = str(df["Date_str"].dropna().max()) if "Date_str" in df.columns and not df["Date_str"].dropna().empty else None
 
-    # Compute a deterministic dataset version hash
-    hash_source = f"{len(df)}:{csv_mtime}:{latest_rec_date}"
-    dataset_version = hashlib.sha256(hash_source.encode()).hexdigest()[:12]
+    with open(csv_path, "rb") as csv_file:
+        dataset_version = hashlib.file_digest(csv_file, "sha256").hexdigest()[:12]
 
     cache = {
         "summary": {
@@ -482,7 +481,7 @@ async def refresh_dataset_transactional(
             }
             candidate_snapshot = _build_cache_and_snapshot(
                 df=df_new,
-                csv_path=active_csv,
+                csv_path=staging_csv,
                 models=models_new,
                 ml_data=ml_data_new,
                 refresh_meta=refresh_meta,

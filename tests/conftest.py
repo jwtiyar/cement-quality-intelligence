@@ -53,8 +53,19 @@ def sparse_csv_path():
     return SPARSE_CSV_PATH
 
 
-@pytest.fixture(autouse=True)
-def isolate_test_environment(monkeypatch):
-    """Ensure tests run in isolation with cleared credentials by default."""
-    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+@pytest.fixture(scope="session", autouse=True)
+def isolate_test_session(tmp_path_factory):
+    """Keep module-scoped setup from writing assistant files into the project."""
+    previous_directory = os.getcwd()
+    os.chdir(tmp_path_factory.mktemp("cement-session"))
+    try:
+        yield
+    finally:
+        os.chdir(previous_directory)
 
+
+@pytest.fixture(autouse=True)
+def isolate_test_environment(monkeypatch, tmp_path):
+    """Ensure tests run in isolation with cleared credentials by default."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)

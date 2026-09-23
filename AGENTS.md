@@ -129,8 +129,8 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 - **Early Strength Input**: The model contract strictly requires 2-day strength (`Strength_Early` == `Strength_2D`). 3-day and 7-day values are never mixed into this target.
 
 ### Refresh Protection & Atomicity
-- **Transactional Staging**: Background extraction builds a candidate file (`ALL_CEMENT_DATA.csv.tmp`).
-- **Data Loss Validation**: The candidate must cover expected cement types, year ranges, and workbook integrity. If candidate rows drop unexpectedly without explicit override, `UnexplainedDataLossError` is raised and the active dataset is preserved.
+- **Transactional Staging**: Background extraction builds a candidate file named `ALL_CEMENT_DATA.csv.staging.<token>`.
+- **Data Loss Validation**: A refresh requires one unambiguous workbook per discovered year. It compares record counts and previously recorded numeric measurements by date and cement type. New results may fill empty measurements. Missing or changed values raise `UnexplainedDataLossError` unless an operator reviews the source and explicitly sets `allow_deletions=True`. An unreadable active CSV also stops the refresh.
 - **Rollback & Backup**: Before replacing the active CSV, the current file is copied to `ALL_CEMENT_DATA.csv.bak`.
 - **Atomic Swap**: `os.replace` commits the staging file to `ALL_CEMENT_DATA.csv`.
 - **Crash Recovery**: If the server starts and finds `ALL_CEMENT_DATA.csv` missing or empty, it automatically restores from `ALL_CEMENT_DATA.csv.bak`.
@@ -146,14 +146,15 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 - **Leakage Prevention**: Any historical sample used to predict D_sample must have had its 28-day test completed and recorded on or before T_pred. In the absence of recorded test completion timestamps, the physical curing constraint enforces:
   D_train <= D_sample - 26 days
 - **Symmetric Baseline**: The recent-mean baseline must respect the identical availability cutoff as the ML model.
+- **Training Window**: Both rolling evaluation and the published XGBoost fit use the latest 12 months when that window contains at least 100 eligible records. Otherwise, they use all eligible records.
 
 ### Promotion Gating
 To be promoted as an active decision-support model over the historical/recent baseline:
 1. **Expanding Folds**: Must be evaluated across >= 3 chronological out-of-time folds without future lookahead.
 2. **Win Rate**: The model must outperform the baseline in >= 75% of evaluated folds.
 3. **Accuracy Margin**: The model must demonstrate an aggregate out-of-time MAE reduction of >= 5% compared to the recent-mean baseline.
-4. **Correlation**: Must achieve R^2 > 0.25 on the validation holdout.
-5. **Honest Reporting**: When a model is not promoted, the system transparently falls back to `recent_mean` and reports the true baseline error metrics, never fabricated model statistics.
+4. **Correlation**: Must achieve aggregate out-of-time R^2 > 0.25 across the rolling folds.
+5. **Honest Reporting**: The dashboard reports rolling out-of-time metrics for the selected prediction policy. When the model is not promoted, it shows `recent_mean` metrics and never labels rejected model scores as baseline scores.
 
 ---
 
@@ -177,7 +178,7 @@ To be promoted as an active decision-support model over the historical/recent ba
 
 - **Test Suite**: `pytest` runs offline tests with mock keys and synthetic data by default.
 - **Synthetic Fixtures**: Located in `tests/fixtures/` (`synthetic_cement_data.csv`, `sparse_cement_data.csv`).
-- **Browser Smoke Test**: Run via Chromium:
+- **Browser Smoke Test**: The script starts the app with the synthetic CSV in a temporary working directory. It does not rewrite the plant knowledge base. Run it via Chromium:
   ```bash
   PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium node tests/smoke_dashboard.mjs
   ```

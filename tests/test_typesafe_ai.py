@@ -1,8 +1,63 @@
 """Offline contract tests for the optional TypeSafe decision adapter."""
 
+import json
 from types import SimpleNamespace
 
+import httpx2
+import typesafe_sdk
+
 import typesafe_ai
+
+
+def test_installed_sdk_serializes_questions_and_parses_answers(monkeypatch):
+    real_client = typesafe_sdk.TypeSafeClient
+
+    def respond(request):
+        payload = json.loads(request.content)
+        assert payload["state"]["cement_type"] == "OPC"
+        assert payload["questions"]["recommended_action"]["type"] == "choice"
+        assert payload["questions"]["requires_human_review"]["type"] == "noul"
+        return httpx2.Response(200, json={
+            "model": "jev-latest",
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+            "answers": {
+                "recommended_action": {
+                    "type": "choice", "choice": "monitor", "confidence": 0.9,
+                    "probabilities": {"monitor": 0.9, "adjust_recipe": 0.05, "stop_and_review": 0.05},
+                },
+                "requires_human_review": {"type": "noul", "noul": 0.1},
+            },
+        })
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(typesafe_sdk, "TypeSafeClient", lambda: real_client(
+        api_key="test-key", base_url="https://typesafe.test", transport=httpx2.MockTransport(respond),
+    ))
+    result = typesafe_ai.judge_rawmix("OPC", {"LSF": 95.0}, [])
+    assert result["enabled"] is True
+    assert result["action"] == "monitor"
+    assert result["requires_human_review"] is False
+
+
+def test_typesafe_adapter_bounds_optional_network_call(monkeypatch):
+    sentinel = object()
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def system_one(self, *, state, questions, timeout, retry):
+            assert timeout == 8.0
+            assert retry.max_retries == 0
+            return sentinel
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(typesafe_sdk, "TypeSafeClient", Client)
+
+    assert typesafe_ai._evaluate({"sample": "OPC"}, {}) is sentinel
 
 
 def test_optional_adapter_is_a_noop_without_response(monkeypatch):

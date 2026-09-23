@@ -13,7 +13,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from data_prep import ml_training_frame
-from ml_train import ML_FEATURES
+from ml_train import ML_FEATURES, select_model_training_window
 
 
 def _metrics(y_true: np.ndarray, prediction: np.ndarray) -> dict[str, float]:
@@ -47,12 +47,13 @@ def _make_xgb() -> xgb.XGBRegressor:
     )
 
 
-def _model_predictions(train: pd.DataFrame, test: pd.DataFrame) -> dict[str, np.ndarray]:
+def _model_predictions(train: pd.DataFrame, test: pd.DataFrame) -> tuple[dict[str, np.ndarray], pd.DataFrame]:
     X_train, y_train = train[ML_FEATURES], train["Strength_28D"]
     X_test = test[ML_FEATURES]
+    model_train = select_model_training_window(train)
     xgb_model = _make_xgb()
     ridge = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
-    xgb_model.fit(X_train, y_train)
+    xgb_model.fit(model_train[ML_FEATURES], model_train["Strength_28D"])
     ridge.fit(X_train, y_train)
 
     recent_cutoff = pd.to_datetime(train["Date_str"].max()) - pd.DateOffset(months=24)
@@ -70,7 +71,7 @@ def _model_predictions(train: pd.DataFrame, test: pd.DataFrame) -> dict[str, np.
         "xgboost": xgb_model.predict(X_test),
         "xgboost_recent_24m": recent_xgb.predict(X_test),
         "xgboost_recency_weighted": weighted_xgb.predict(X_test),
-    }
+    }, model_train
 
 
 def rolling_evaluation(
@@ -147,7 +148,7 @@ def rolling_evaluation(
         if len(train) < 10:
             continue
 
-        fold_predictions = _model_predictions(train, test)
+        fold_predictions, model_train = _model_predictions(train, test)
         actual.append(test["Strength_28D"].to_numpy())
         for name, prediction in fold_predictions.items():
             predictions[name].append(prediction)
@@ -164,6 +165,8 @@ def rolling_evaluation(
             "testStart": str(test["Date_str"].iloc[0]),
             "testEnd": str(test["Date_str"].iloc[-1]),
             "trainSamplesAvailable": int(len(train)),
+            "modelTrainSamples": int(len(model_train)),
+            "modelTrainStart": str(model_train["Date_str"].iloc[0]),
             "xgbMae": round(fold_mae_xgb, 3),
             "baselineMae": round(fold_mae_base, 3),
             "xgbBeatBaseline": won,

@@ -22,10 +22,15 @@ def _evaluate(state: dict[str, Any], questions: dict[str, Any]):
     if not os.environ.get("TYPESAFE_API_KEY"):
         return None
     try:
-        from typesafe_sdk import TypeSafeClient
+        from typesafe_sdk import RetryPolicy, TypeSafeClient
 
         with TypeSafeClient() as client:
-            return client.system_one(state=state, questions=questions)
+            return client.system_one(
+                state=state,
+                questions=questions,
+                timeout=8.0,
+                retry=RetryPolicy(max_retries=0),
+            )
     except Exception:
         # TypeSafe is an optional decision aid; deterministic application rules
         # remain authoritative when the service or SDK is unavailable.
