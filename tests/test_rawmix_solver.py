@@ -65,6 +65,18 @@ class TestClinkerBasis:
 
 
 class TestSolveMode:
+    def test_hfo_sulfur_does_not_change_clinker_mix_targets(self):
+        with_sulfur = solve_payload()
+        without_sulfur = solve_payload()
+        without_sulfur["hfo"] = {**HFO, "sulfur": 0.0}
+
+        sulfur_result = calculate_rawmix(with_sulfur)
+        no_sulfur_result = calculate_rawmix(without_sulfur)
+
+        assert sulfur_result["dry_proportions"] == no_sulfur_result["dry_proportions"]
+        assert sulfur_result["clinker"]["LSF"] == no_sulfur_result["clinker"]["LSF"]
+        assert sulfur_result["clinker"]["SO3"] > no_sulfur_result["clinker"]["SO3"]
+
     def test_hits_targets(self):
         result = calculate_rawmix(solve_payload())
         cl = result["clinker"]
@@ -281,12 +293,11 @@ class TestPlantBenchmark:
         assert props["Slag"] == pytest.approx(0.65, abs=0.1)  # Iron Ore / Pyrite
         assert props["Sand"] == pytest.approx(3.09, abs=0.1)  # Bauxite corrector
 
-        # Total dry proportions sum to 100%
-        assert sum(props.values()) == pytest.approx(100.0, abs=0.01)
+        # Four proportions rounded to two decimals can differ from 100 by 0.02.
+        assert sum(props.values()) == pytest.approx(100.0, abs=0.02)
 
         # Resulting clinker moduli match targets
         clinker = result["clinker"]
         assert clinker["LSF"] == pytest.approx(99.0, abs=0.1)
         assert clinker["SM"] == pytest.approx(2.4, abs=0.05)
         assert clinker["AM"] == pytest.approx(1.6, abs=0.05)
-

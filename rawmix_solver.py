@@ -206,9 +206,9 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         target_lsf, target_sm, target_am = _validate_targets(payload["targets"])
 
         def calc_deltas(comp: dict[str, float]) -> dict[str, float]:
-            c, s, a, f, so3 = comp["CaO"], comp["SiO2"], comp["Al2O3"], comp["Fe2O3"], comp["SO3"]
+            c, s, a, f = comp["CaO"], comp["SiO2"], comp["Al2O3"], comp["Fe2O3"]
             return {
-                "dC": c - 0.7 * so3 - 0.01 * target_lsf * (2.8 * s + 1.18 * a + 0.65 * f),
+                "dC": c - 0.01 * target_lsf * (2.8 * s + 1.18 * a + 0.65 * f),
                 "dS": s - target_sm * (a + f),
                 "dA": a - target_am * f,
             }
@@ -220,7 +220,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             [deltas[n]["dA"] for n in MATERIAL_NAMES],
             [1.0, 1.0, 1.0, 1.0],
         ]
-        B = [70.0 * cl_so3_fuel, 0.0, 0.0, 100.0]
+        B = [0.0, 0.0, 0.0, 100.0]
         X = _solve4x4(M, B)
         if X is not None and all(v >= -1e-9 for v in X):
             x_cl = X + [x5]
@@ -257,7 +257,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     cl_so3_raw = clinker_chem["SO3"]
     cl_so3_total = cl_so3_raw + cl_so3_fuel
 
-    cl_lsf = clinker_lsf_percent(cao, sio2, al2o3, fe2o3, cl_so3_total)
+    cl_lsf = clinker_lsf_percent(cao, sio2, al2o3, fe2o3)
     cl_sm = sio2 / (al2o3 + fe2o3) if (al2o3 + fe2o3) else 0.0
     cl_am = al2o3 / fe2o3 if fe2o3 else 0.0
 

@@ -37,20 +37,23 @@ class Moduli:
         return self.LSF * 100.0
 
 
-def calc_moduli(ox: OxideAnalysis) -> Moduli:
+def calc_moduli(ox: OxideAnalysis, *, cement: bool = False) -> Moduli:
     denom = 2.8 * ox.SiO2 + 1.18 * ox.Al2O3 + 0.65 * ox.Fe2O3
-    lsf = (ox.CaO - 0.7 * ox.SO3) / denom if denom else 0.0
+    cao = ox.CaO - 0.7 * ox.SO3 if cement else ox.CaO
+    lsf = cao / denom if denom else 0.0
     sm_denom = ox.Al2O3 + ox.Fe2O3
     sm = ox.SiO2 / sm_denom if sm_denom else 0.0
     am = ox.Al2O3 / ox.Fe2O3 if ox.Fe2O3 else 0.0
     return Moduli(LSF=lsf, SM=sm, AM=am)
 
 
-def calc_bogue(ox: OxideAnalysis) -> BoguePhases:
+def calc_bogue(ox: OxideAnalysis, *, cement: bool = False) -> BoguePhases:
     # FLS-verified formulas (single source of truth). Values are returned raw:
     # a physically impossible composition yields negative phases instead of a
     # silently clamped result — callers surface that via phases_valid.
-    c3s = 4.071 * ox.CaO - 7.600 * ox.SiO2 - 6.718 * ox.Al2O3 - 1.430 * ox.Fe2O3 - 2.852 * ox.SO3
+    c3s = 4.071 * ox.CaO - 7.600 * ox.SiO2 - 6.718 * ox.Al2O3 - 1.430 * ox.Fe2O3
+    if cement:
+        c3s -= 2.852 * ox.SO3
     c2s = 2.867 * ox.SiO2 - 0.7544 * c3s
     c3a = 2.650 * ox.Al2O3 - 1.692 * ox.Fe2O3
     c4af = 3.043 * ox.Fe2O3
@@ -74,11 +77,11 @@ def calc_liquid_content(phases: BoguePhases, ox: OxideAnalysis | None = None) ->
     )
 
 
-def clinker_lsf_percent(cao: float, sio2: float, al2o3: float, fe2o3: float, so3: float) -> float:
+def clinker_lsf_percent(cao: float, sio2: float, al2o3: float, fe2o3: float) -> float:
     denom = 2.8 * sio2 + 1.18 * al2o3 + 0.65 * fe2o3
     if not denom:
         return 0.0
-    return 100.0 * (cao - 0.7 * so3) / denom
+    return 100.0 * cao / denom
 
 
 def analyze_clinker(ox: OxideAnalysis) -> dict[str, Any]:

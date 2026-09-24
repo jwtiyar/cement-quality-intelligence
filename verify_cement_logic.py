@@ -23,8 +23,8 @@ def test_chemical_logic():
     print("=" * 80)
 
     ox = OxideAnalysis(SiO2=19.18, Al2O3=4.96, Fe2O3=3.90, CaO=62.51, SO3=2.26)
-    mod = calc_moduli(ox)
-    phases = calc_bogue(ox)
+    mod = calc_moduli(ox, cement=True)
+    phases = calc_bogue(ox, cement=True)
 
     expected = {
         "LSF": 0.9797,

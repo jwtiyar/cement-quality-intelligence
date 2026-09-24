@@ -25,19 +25,29 @@ REF_OXIDE = OxideAnalysis(SiO2=19.18, Al2O3=4.96, Fe2O3=3.90, CaO=62.51, SO3=2.2
 
 
 class TestModuli:
+    def test_clinker_lsf_uses_total_cao_even_with_so3(self):
+        ox = OxideAnalysis(SiO2=22, Al2O3=5, Fe2O3=3, CaO=65, SO3=2)
+        denominator = 2.8 * 22 + 1.18 * 5 + 0.65 * 3
+        assert calc_moduli(ox).LSF_percent == pytest.approx(100 * 65 / denominator)
+
     # Tolerance matches verify_cement_logic.py (diff < 0.002). The FLS reference
     # value for LSF is approximate; the verified script accepts 0.0016 diff.
     TOL = 0.002
 
     def test_known_fls_values(self):
-        mod = calc_moduli(REF_OXIDE)
+        mod = calc_moduli(REF_OXIDE, cement=True)
         assert mod.LSF == pytest.approx(0.9797, abs=self.TOL)
         assert mod.SM == pytest.approx(2.1648, abs=1e-4)
         assert mod.AM == pytest.approx(1.2718, abs=1e-4)
 
     def test_lsf_percent_property(self):
-        mod = calc_moduli(REF_OXIDE)
+        mod = calc_moduli(REF_OXIDE, cement=True)
         assert mod.LSF_percent == pytest.approx(97.97, abs=self.TOL * 100)
+
+    def test_cement_lsf_deducts_gypsum_so3(self):
+        ox = OxideAnalysis(SiO2=22, Al2O3=5, Fe2O3=3, CaO=65, SO3=2)
+        denominator = 2.8 * 22 + 1.18 * 5 + 0.65 * 3
+        assert calc_moduli(ox, cement=True).LSF_percent == pytest.approx(100 * 63.6 / denominator)
 
     def test_zero_denominator_safe(self):
         # All zeros must not raise (return 0.0)
@@ -55,8 +65,13 @@ class TestModuli:
 
 
 class TestBogue:
+    def test_clinker_bogue_does_not_deduct_so3(self):
+        ox = OxideAnalysis(SiO2=22, Al2O3=5, Fe2O3=3, CaO=65, SO3=2)
+        no_so3 = OxideAnalysis(SiO2=22, Al2O3=5, Fe2O3=3, CaO=65)
+        assert calc_bogue(ox) == calc_bogue(no_so3)
+
     def test_known_fls_values(self):
-        phases = calc_bogue(REF_OXIDE)
+        phases = calc_bogue(REF_OXIDE, cement=True)
         assert phases.C3S == pytest.approx(63.3664, abs=1e-3)
         assert phases.C2S == pytest.approx(7.1854, abs=1e-3)
         assert phases.C3A == pytest.approx(6.5452, abs=1e-3)
@@ -94,11 +109,11 @@ class TestClinkerLSF:
         # clinker_lsf_percent must agree with the moduli path
         ox = REF_OXIDE
         mod = calc_moduli(ox)
-        direct = clinker_lsf_percent(ox.CaO, ox.SiO2, ox.Al2O3, ox.Fe2O3, ox.SO3)
+        direct = clinker_lsf_percent(ox.CaO, ox.SiO2, ox.Al2O3, ox.Fe2O3)
         assert direct == pytest.approx(mod.LSF_percent, abs=1e-3)
 
     def test_zero_denominator(self):
-        assert clinker_lsf_percent(0, 0, 0, 0, 0) == 0.0
+        assert clinker_lsf_percent(0, 0, 0, 0) == 0.0
 
 
 class TestAnalyzeClinker:
@@ -107,8 +122,7 @@ class TestAnalyzeClinker:
         assert set(result["moduli"]) == {"LSF", "SM", "AM"}
         assert set(result["phases"]) == {"C3S", "C2S", "C3A", "C4AF"}
         assert "liquid_content" in result
-        # rounded to 2 decimals; tolerance matches verify script (0.002 ratio)
-        assert result["moduli"]["LSF"] == pytest.approx(97.97, abs=0.2)
+        assert result["moduli"]["LSF"] == pytest.approx(100.67, abs=0.01)
 
     def test_valid_chemistry_flags(self):
         result = analyze_clinker(REF_OXIDE)
