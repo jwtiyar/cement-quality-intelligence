@@ -56,6 +56,22 @@ def compute_subset_stats(sub_df: pd.DataFrame, cement_types: tuple[str, ...] = (
     }
 
 
+def _filter_months(df: pd.DataFrame, months: list[int], year: int | None) -> pd.DataFrame:
+    mask = df["Month_Num"].isin(months)
+    if year is not None:
+        # The selected year anchors the first month, including winter and Nov–Jan.
+        period_year = year + (df["Month_Num"] < months[0]) if months[-1] < months[0] else year
+        mask &= df["Year"] == period_year
+    return df[mask]
+
+
+def _month_range_label(months: list[int], year: int | None) -> str:
+    start, end = MONTH_NAMES[months[0] - 1], MONTH_NAMES[months[-1] - 1]
+    if year is None:
+        return f"{start} – {end}"
+    return f"{start} {year} – {end} {year + (months[-1] < months[0])}"
+
+
 def get_averages_data(
     df: pd.DataFrame | None,
     period_type: str = "all",
@@ -71,6 +87,7 @@ def get_averages_data(
     # 1. Base year filter
     year_filtered_df = df
     year_label = "All Years"
+    y_int = None
     if str(year).lower() != "all" and year is not None:
         try:
             y_int = int(year)
@@ -90,13 +107,13 @@ def get_averages_data(
         s_info = next((s for s in SEASONS_INFO if s["key"].lower() == str(season).lower()), None)
         if s_info:
             active_months = s_info["months"]
-            sub_df = year_filtered_df[year_filtered_df["Month_Num"].isin(active_months)]
+            sub_df = _filter_months(df, active_months, y_int)
             period_label = f"{s_info['name']} ({s_info['label']})"
     elif period_type_clean == "quarter" and quarter:
         q_info = next((q for q in QUARTERS_INFO if q["key"].upper() == str(quarter).upper()), None)
         if q_info:
             active_months = q_info["months"]
-            sub_df = year_filtered_df[year_filtered_df["Month_Num"].isin(active_months)]
+            sub_df = _filter_months(df, active_months, y_int)
             period_label = f"{q_info['name']} ({q_info['label']})"
     elif period_type_clean in ("months", "custom_3m") and months:
         if isinstance(months, str):
@@ -104,15 +121,20 @@ def get_averages_data(
         else:
             month_list = [int(m) for m in months]
         if month_list:
+            if any(m < 1 or m > 12 for m in month_list):
+                raise ValueError("Months must be between 1 and 12.")
             active_months = month_list
-            sub_df = year_filtered_df[year_filtered_df["Month_Num"].isin(active_months)]
+            sub_df = _filter_months(df, active_months, y_int)
             names = [MONTH_NAMES[m - 1] for m in month_list if 1 <= m <= 12]
             period_label = f"Months: {' – '.join(names)}"
 
+    crosses_year = active_months and active_months[-1] < active_months[0] and y_int is not None
+    if crosses_year:
+        year_label = _month_range_label(active_months, y_int)
     full_label = f"{period_label} · {year_label}" if year_label != "All Years" else period_label
 
     if str(year).lower() != "all":
-        coverage = f"Year {year_label}"
+        coverage = year_label if crosses_year else f"Year {year_label}"
     elif not sub_df.empty and "Year" in sub_df.columns:
         coverage = f"{int(sub_df['Year'].min())} - {int(sub_df['Year'].max())}"
     else:
@@ -120,16 +142,16 @@ def get_averages_data(
 
     stats = compute_subset_stats(sub_df)
 
-    # 3. Seasonal breakdown evaluated on year_filtered_df
+    # 3. Seasonal breakdown uses the same starting-year rule as the selected period.
     seasonal_breakdown = []
     for s in SEASONS_INFO:
-        s_df = year_filtered_df[year_filtered_df["Month_Num"].isin(s["months"])]
+        s_df = _filter_months(df, s["months"], y_int)
         s_stats = compute_subset_stats(s_df)
         seasonal_breakdown.append({
             "key": s["key"],
             "name": s["name"],
             "icon": s["icon"],
-            "label": s["label"],
+            "label": _month_range_label(s["months"], y_int),
             "months": s["months"],
             "totalRecords": s_stats["totalRecords"],
             "avgStrength": s_stats["avgStrength"],

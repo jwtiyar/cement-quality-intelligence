@@ -2610,105 +2610,50 @@ function renderProcessEconomics(econ) {
     const elGj = document.getElementById('econ_cost_gj');
     if (elGj) elGj.textContent = Number(fuel.cost_per_gj || 0).toFixed(2);
 
-    // Badge & Calorific Comparison Alert Box
+    // Compare consumption and costs using both heat demand and calorific value.
     const badge = document.getElementById('econ_status_badge');
     const alertBox = document.getElementById('econ_calorific_alert_box');
+    const varKg = Number(fuel.sfc_var_kg_t ?? 0);
+    const varPct = Number(fuel.sfc_var_pct ?? 0);
+    const varCostCl = Number(fuel.cost_var_per_t_clinker ?? 0);
+    const dailyVarCost = Number(fuel.daily_cost_var ?? 0);
+    const dailyVarFuel = Number(fuel.daily_fuel_var_t ?? 0);
+    const annualVarCost = Number(fuel.annual_cost_var ?? 0);
+    const isAbove = fuel.status === 'penalty';
+    const isBelow = fuel.status === 'optimal';
+    const label = isAbove ? 'Above consumption benchmark' : isBelow ? 'Below consumption benchmark' : 'At consumption benchmark';
+    const rgb = isAbove ? '239, 68, 68' : isBelow ? '16, 185, 129' : '72, 169, 148';
+    const costLabel = dailyVarCost > 0 ? 'cost increase' : dailyVarCost < 0 ? 'savings' : 'cost change';
+    const safeCurrency = escapeHtml(cur);
 
-    const actualCal = Number(fuel.actual_calorific || 9800);
-    const stdCal = Number(baseline.standard_calorific || 9800);
-    const varKg = Number(fuel.sfc_var_kg_t || 0);
-    const varPct = Number(fuel.sfc_var_pct || 0);
-    const varCostCl = Number(fuel.cost_var_per_t_clinker || 0);
-    const dailyVarCost = Number(fuel.daily_cost_var || 0);
-    const dailyVarFuel = Number(fuel.daily_fuel_var_t || 0);
-    const annualVarCost = Number(fuel.annual_cost_var || 0);
-
-    if (fuel.status === 'penalty') {
-        if (badge) {
-            badge.style.background = 'rgba(239, 68, 68, 0.15)';
-            badge.style.color = '#ef4444';
-            badge.style.borderColor = '#ef4444';
-            badge.textContent = `Calorific Deficit (-${fuel.calorific_deficit} kcal/kg)`;
-        }
-        if (alertBox) {
-            alertBox.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-            alertBox.style.background = 'rgba(239, 68, 68, 0.06)';
-            alertBox.innerHTML = `
-                <div style="display:flex; align-items:flex-start; gap:0.6rem;">
-                    <div style="font-size:1.4rem; line-height:1;">⚠️</div>
-                    <div style="flex:1;">
-                        <div style="font-weight:700; color:#ef4444; font-size:0.85rem; margin-bottom:0.25rem;">
-                            Fuel Quality Penalty Alert: Delivered HFO (${actualCal.toLocaleString()} kcal/kg) is below Sinoma Design Standard (${stdCal.toLocaleString()} kcal/kg)
-                        </div>
-                        <div style="font-size:0.78rem; line-height:1.45; color:var(--text-primary);">
-                            Because the calorific value is low, the kiln must burn 
-                            <strong style="color:#ef4444; font-family:var(--font-mono);">${fuel.sfc_actual_kg_t.toFixed(2)} kg/t</strong> 
-                            instead of the standard <strong style="font-family:var(--font-mono);">${fuel.sfc_std_kg_t.toFixed(2)} kg/t</strong> 
-                            (an excess of <strong style="color:#ef4444; font-family:var(--font-mono);">+${varKg.toFixed(2)} kg fuel/ton clinker</strong> or 
-                            <strong style="color:#ef4444; font-family:var(--font-mono);">+${varPct.toFixed(1)}%</strong>).
-                        </div>
-                        <div style="margin-top:0.4rem; display:flex; flex-wrap:wrap; gap:0.75rem; font-size:0.78rem; font-family:var(--font-mono);">
-                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
-                                Clinker Cost Penalty: <strong>+${cur}${varCostCl.toFixed(2)} / ton</strong>
-                            </span>
-                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
-                                Extra Fuel Burned: <strong>+${dailyVarFuel.toFixed(1)} tons / day</strong>
-                            </span>
-                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
-                                Daily Financial Loss: <strong>+${cur}${Math.abs(dailyVarCost).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} / day</strong>
-                            </span>
-                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
-                                Annual Impact (310 d): <strong>+${cur}${Math.abs(annualVarCost).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} / yr</strong>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-    } else if (fuel.status === 'optimal') {
-        if (badge) {
-            badge.style.background = 'rgba(16, 185, 129, 0.15)';
-            badge.style.color = '#10b981';
-            badge.style.borderColor = '#10b981';
-            badge.textContent = `Superior Calorific (+${Math.abs(fuel.calorific_deficit)} kcal/kg)`;
-        }
-        if (alertBox) {
-            alertBox.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-            alertBox.style.background = 'rgba(16, 185, 129, 0.06)';
-            alertBox.innerHTML = `
-                <div style="display:flex; align-items:flex-start; gap:0.6rem;">
-                    <div style="font-size:1.4rem; line-height:1;">✨</div>
-                    <div style="flex:1;">
-                        <div style="font-weight:700; color:#10b981; font-size:0.85rem; margin-bottom:0.25rem;">
-                            High Efficiency Fuel: Delivered HFO (${actualCal.toLocaleString()} kcal/kg) exceeds Sinoma Standard (${stdCal.toLocaleString()} kcal/kg)
-                        </div>
-                        <div style="font-size:0.78rem; line-height:1.45; color:var(--text-primary);">
-                            Specific fuel consumption decreases to <strong style="color:#10b981; font-family:var(--font-mono);">${fuel.sfc_actual_kg_t.toFixed(2)} kg/t</strong> 
-                            (saving <strong style="color:#10b981; font-family:var(--font-mono);">${Math.abs(varKg).toFixed(2)} kg fuel/ton</strong> or 
-                            <strong style="color:#10b981; font-family:var(--font-mono);">${Math.abs(varPct).toFixed(1)}%</strong>), saving 
-                            <strong style="color:#10b981; font-family:var(--font-mono);">${cur}${Math.abs(dailyVarCost).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} / day</strong>.
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-    } else {
-        if (badge) {
-            badge.style.background = 'rgba(var(--accent-rgb, 72, 169, 148), 0.15)';
-            badge.style.color = 'var(--accent)';
-            badge.style.borderColor = 'var(--accent)';
-            badge.textContent = 'Standard Baseline';
-        }
-        if (alertBox) {
-            alertBox.style.borderColor = 'var(--panel-border)';
-            alertBox.style.background = 'var(--panel-muted)';
-            alertBox.innerHTML = `
-                <div style="display:flex; align-items:center; gap:0.6rem; font-size:0.78rem;">
-                    <span style="font-size:1.1rem;">✅</span>
-                    <span>Delivered fuel calorific value matches <strong>Sinoma Sulaymaniyah Project Standard (${stdCal.toLocaleString()} kcal/kg)</strong>. Specific consumption is nominal at <strong>${fuel.sfc_actual_kg_t.toFixed(2)} kg HFO / ton clinker</strong> (${fuel.actual_heat} kcal/kg clinker).</span>
-                </div>
-            `;
-        }
+    if (badge) {
+        badge.style.background = `rgba(${rgb}, 0.15)`;
+        badge.style.color = `rgb(${rgb})`;
+        badge.style.borderColor = `rgb(${rgb})`;
+        badge.textContent = label;
+    }
+    if (alertBox) {
+        alertBox.style.borderColor = `rgba(${rgb}, 0.4)`;
+        alertBox.style.background = `rgba(${rgb}, 0.06)`;
+        alertBox.innerHTML = `
+            <div style="font-weight:700; color:rgb(${rgb}); font-size:0.85rem; margin-bottom:0.25rem;">${label}</div>
+            <div style="font-size:0.78rem; line-height:1.45; color:var(--text-primary);">
+                Heat consumption: <strong>${Number(fuel.actual_heat).toLocaleString()} kcal/kg clinker</strong>
+                vs benchmark ${Number(baseline.standard_heat).toLocaleString()}.
+                HFO calorific value: <strong>${Number(fuel.actual_calorific).toLocaleString()} kcal/kg</strong>
+                vs benchmark ${Number(baseline.standard_calorific).toLocaleString()}.
+                Specific fuel consumption: <strong>${Number(fuel.sfc_actual_kg_t).toFixed(2)} kg/t</strong>
+                vs benchmark ${Number(fuel.sfc_std_kg_t).toFixed(2)} kg/t,
+                a change of <strong>${varKg.toLocaleString(undefined, { signDisplay: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg/t</strong>
+                (${varPct.toLocaleString(undefined, { signDisplay: 'always', minimumFractionDigits: 1, maximumFractionDigits: 1 })}%).
+            </div>
+            <div style="margin-top:0.4rem; display:flex; flex-wrap:wrap; gap:0.75rem; font-size:0.78rem; font-family:var(--font-mono);">
+                <span>Fuel cost difference: <strong>${varCostCl < 0 ? '-' : varCostCl > 0 ? '+' : ''}${safeCurrency}${Math.abs(varCostCl).toFixed(2)} / ton clinker</strong></span>
+                <span>Daily fuel difference: <strong>${dailyVarFuel.toLocaleString(undefined, { signDisplay: 'always', minimumFractionDigits: 1, maximumFractionDigits: 1 })} tons / day</strong></span>
+                <span>Daily ${costLabel}: <strong>${safeCurrency}${Math.abs(dailyVarCost).toLocaleString(undefined, { maximumFractionDigits: 0 })} / day</strong></span>
+                <span>Annual ${costLabel} at ${Number(baseline.operating_days_per_year)} days: <strong>${safeCurrency}${Math.abs(annualVarCost).toLocaleString(undefined, { maximumFractionDigits: 0 })} / year</strong></span>
+            </div>
+        `;
     }
 
     // Material Breakdown List

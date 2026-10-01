@@ -4,6 +4,9 @@ import pytest
 from fastapi import FastAPI
 import httpx
 import asyncio
+from types import SimpleNamespace
+
+import pandas as pd
 
 import routes
 import state
@@ -94,3 +97,30 @@ class TestAveragesEndpoint:
         assert "averages" in body
         assert len(body["averages"]["seasonalBreakdown"]) == 4
         assert body["averages"]["periodLabel"] == "Full Dataset (All Time)"
+
+    @pytest.mark.parametrize("period,expected_mean,expected_coverage", [
+        ({"period_type": "season", "season": "winter"}, 50.0, "Dec 2024 – Feb 2025"),
+        ({"period_type": "months", "months": "12,1,2"}, 50.0, "Dec 2024 – Feb 2025"),
+        ({"period_type": "months", "months": "11,12,1"}, 40.0, "Nov 2024 – Jan 2025"),
+    ])
+    def test_cross_year_period_uses_starting_year(self, client, monkeypatch, period, expected_mean, expected_coverage):
+        df = pd.DataFrame({
+            "Year": [2023, 2024, 2024, 2024, 2024, 2025, 2025, 2025],
+            "Month_Num": [12, 1, 2, 11, 12, 1, 2, 12],
+            "Cement_Type": ["OPC"] * 8,
+            "Strength_28D": [900, 800, 700, 30, 40, 50, 60, 600],
+            "C3S": [900, 800, 700, 30, 40, 50, 60, 600],
+        })
+        monkeypatch.setattr(state, "get_snapshot", lambda: SimpleNamespace(df=df))
+        response = client.get("/api/averages", params={**period, "year": "2024"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["totalRecords"] == 3
+        assert body["avgStrength"]["OPC"] == expected_mean
+        assert body["avgC3S"]["OPC"] == expected_mean
+        assert body["sampleCounts"]["Strength_28D"]["OPC"] == 3
+        assert expected_coverage in body["periodLabel"]
+        assert body["yearsCoverage"] == expected_coverage
+        winter = next(s for s in body["seasonalBreakdown"] if s["key"] == "winter")
+        assert winter["avgStrength"]["OPC"] == 50.0
+        assert winter["label"] == "Dec 2024 – Feb 2025"

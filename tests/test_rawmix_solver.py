@@ -429,5 +429,27 @@ class TestPredefinedPresets:
         # Daily cost penalty: ~ +$9,135/day
         assert econ_low["fuel"]["daily_cost_var"] == pytest.approx(9135.0, abs=50.0)
         # Warning diagnostic generated
-        assert any("below Sinoma design standard" in d["message"] for d in res_low["diagnostics"])
+        assert any("Fuel consumption is above" in d["message"] for d in res_low["diagnostics"])
 
+    @pytest.mark.parametrize("heat,calorific,status,variance", [
+        (900, 10000, "penalty", 14.49),
+        (650, 9200, "optimal", -4.86),
+        (900, 9800, "penalty", 16.33),
+        (740, 9800, "standard", 0.0),
+    ])
+    def test_economics_status_tracks_consumption_not_calorific(self, heat, calorific, status, variance):
+        result = calculate_rawmix({
+            "mode": "solve", "cement_type": "OPC",
+            "materials": {
+                "limestone": self.LIMESTONE, "shale": self.CLAY,
+                "sand": self.SAND, "pyrite": self.SLAG,
+            },
+            "targets": {"LSF": 95.0, "SM": 2.35, "AM": 1.40},
+            "hfo": {"heat": heat, "calorific": calorific, "sulfur": 2.5},
+        })
+        fuel = result["economics"]["fuel"]
+        assert fuel["status"] == status
+        assert fuel["sfc_var_kg_t"] == pytest.approx(variance, abs=0.01)
+        assert (fuel["daily_cost_var"] > 0) == (status == "penalty")
+        warnings = [d["message"] for d in result["diagnostics"] if "Fuel consumption is above" in d["message"]]
+        assert bool(warnings) == (status == "penalty")

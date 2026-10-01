@@ -248,9 +248,9 @@ def _calculate_process_economics(
     total_direct_cost = mat_cost_clinker + fuel_cost_actual
     daily_direct_cost = total_direct_cost * capacity_tpd
 
-    if hfo_cal < (std_cal - 10):
+    if round(sfc_var_kg_t, 2) > 0:
         status = "penalty"
-    elif hfo_cal > (std_cal + 10):
+    elif round(sfc_var_kg_t, 2) < 0:
         status = "optimal"
     else:
         status = "standard"
@@ -401,14 +401,16 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     economics = _calculate_process_economics(
         materials, x_dry_norm, hfo_heat, hfo_cal, payload.get("economics"), labels
     )
-    if hfo_cal < 9790:
+    if economics["fuel"]["status"] == "penalty":
         diagnostics.append({
             "severity": "warning",
             "message": (
-                f"Fuel Net Calorific Value ({hfo_cal:.0f} kcal/kg) is below Sinoma design standard (9,800 kcal/kg). "
-                f"Specific fuel consumption rises to {economics['fuel']['sfc_actual_kg_t']:.2f} kg/t "
-                f"({economics['fuel']['sfc_var_kg_t']:+.2f} kg/t, {economics['fuel']['sfc_var_pct']:+.1f}% fuel penalty), "
-                f"costing +{economics['currency']}{economics['fuel']['cost_var_per_t_clinker']:.2f}/ton clinker extra in thermal energy."
+                f"Fuel consumption is above the benchmark: {economics['fuel']['sfc_actual_kg_t']:.2f} "
+                f"vs {economics['fuel']['sfc_std_kg_t']:.2f} kg/t clinker "
+                f"({economics['fuel']['sfc_var_kg_t']:+.2f} kg/t, {economics['fuel']['sfc_var_pct']:+.1f}%). "
+                f"This comparison includes both heat consumption ({hfo_heat:.0f} kcal/kg clinker) "
+                f"and fuel calorific value ({hfo_cal:.0f} kcal/kg). "
+                f"Fuel cost difference: +{economics['currency']}{economics['fuel']['cost_var_per_t_clinker']:.2f}/t clinker."
             ),
         })
 

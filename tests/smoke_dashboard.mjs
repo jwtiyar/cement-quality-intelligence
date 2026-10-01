@@ -128,6 +128,18 @@ try {
   const avg = await page.textContent("#avgStrength");
   if (!avg) throw new Error("avgStrength panel never populated");
 
+  await page.selectOption("#avgYearSelect", "2024");
+  await page.selectOption("#avg3mSelect", "months_12,1,2");
+  await page.waitForFunction(() => document.getElementById("activePeriodBadge").textContent.includes("Dec 2024 – Feb 2025"));
+  if (await page.textContent("#yearsCoverage") !== "Dec 2024 – Feb 2025") {
+    throw new Error("Cross-year coverage was not displayed");
+  }
+  await page.click('[data-period="season_winter"]');
+  await page.waitForFunction(() => document.getElementById("activePeriodBadge").textContent.includes("Winter") &&
+    document.getElementById("activePeriodBadge").textContent.includes("Dec 2024 – Feb 2025"));
+  await page.click("#btnResetAvgPeriod");
+  await page.waitForFunction(() => document.getElementById("activePeriodBadge").textContent === "Full Dataset (All Time)");
+
   await page.focus("#tabBtnAnalytics");
   await page.keyboard.press("ArrowRight");
   if (new URL(page.url()).hash !== "#ai" || await page.getAttribute("#tabBtnAI", "aria-selected") !== "true") {
@@ -171,6 +183,22 @@ try {
   if (await page.locator("#rawmix_prompt_block img").count() || await page.evaluate(() => window.__unsafeExplanationRan === true)) {
     throw new Error("Unsafe raw-mix explanation HTML was rendered");
   }
+
+  for (const [heat, calorific, badge, costLabel, cost] of [
+    [900, 10000, "Above consumption benchmark", "Daily cost increase", "26,879"],
+    [650, 9200, "Below consumption benchmark", "Daily savings", "9,012"],
+    [740, 9800, "At consumption benchmark", "Daily cost change", "0"],
+  ]) {
+    await page.fill("#raw_hfo_heat", String(heat));
+    await page.fill("#raw_hfo_cal", String(calorific));
+    await page.click("#btnCalculateRawMix");
+    await page.waitForFunction(expected => document.getElementById("econ_status_badge").textContent === expected, badge);
+    const alert = await page.textContent("#econ_calorific_alert_box");
+    if (!alert.includes(`${costLabel}: $${cost} / day`)) {
+      throw new Error(`Incorrect economic impact for heat=${heat}, calorific=${calorific}: ${alert}`);
+    }
+  }
+  await page.screenshot({ path: "/tmp/cement-economics-regression.png", fullPage: true });
 
   // Recipe mode ("Calculate from Recipe") — regression: mode "calc" must
   // not 422 (frontend uses "calc", schema only accepted "recipe")
