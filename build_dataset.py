@@ -26,8 +26,16 @@ def _historical_changes(old_df: pd.DataFrame, new_df: pd.DataFrame) -> list[str]
     problems = [f"{sum(missing.values())} missing records"] if missing else []
 
     metadata = {"Date", "Cement_Type", "Year", "Month_Num", "Excel_Date", "Source_File", "Source_Sheet", "Source_Column_28D"}
+    # Columns populated with volatile formulas (e.g. RANDBETWEEN in plant lab sheets)
+    # that fluctuate on every Excel recalculation/save.
+    volatile_columns = {"Ins.R"}
     for column in old_df.columns:
-        if column in metadata or column.startswith("Excel_") or column.startswith("Source_"):
+        if (
+            column in metadata
+            or column in volatile_columns
+            or column.startswith("Excel_")
+            or column.startswith("Source_")
+        ):
             continue
         old_values = pd.to_numeric(old_df[column], errors="coerce")
         if not old_values.notna().any():

@@ -26,22 +26,14 @@ from schemas import (
 )
 import state
 from typesafe_ai import assess_prediction, judge_rawmix, rerank_contexts
+from averages import get_averages_data
 
 router = APIRouter()
 CHAT_TIMEOUT_SECONDS = 35.0
 
 
 async def _typesafe_call(fn, *args):
-    if not os.environ.get("TYPESAFE_API_KEY"):
-        return fn(*args)
-    task = asyncio.create_task(anyio.to_thread.run_sync(fn, *args, abandon_on_cancel=True))
-    try:
-        while not task.done():
-            await asyncio.wait({task}, timeout=0.05)
-        return task.result()
-    finally:
-        if not task.done():
-            task.cancel()
+    return await anyio.to_thread.run_sync(fn, *args, abandon_on_cancel=True)
 
 
 @router.get("/api/data")
@@ -89,6 +81,30 @@ async def get_latest_date(type: str = "OPC"):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+
+@router.get("/api/averages")
+async def get_averages(
+    period_type: str = "all",
+    season: str | None = None,
+    quarter: str | None = None,
+    months: str | None = None,
+    year: str = "all",
+):
+    snapshot = state.get_snapshot()
+    if snapshot.df is None or snapshot.df.empty:
+        raise HTTPException(status_code=503, detail="Dataset not loaded")
+    try:
+        return get_averages_data(
+            snapshot.df,
+            period_type=period_type,
+            season=season,
+            quarter=quarter,
+            months=months,
+            year=year,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/api/monthly")
 async def get_monthly(year: int, month: int, param: str = "Strength_28D"):

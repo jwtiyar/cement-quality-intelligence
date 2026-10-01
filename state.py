@@ -22,6 +22,7 @@ import pandas as pd
 
 from data_prep import CEMENT_TYPES, default_csv_path, load_and_prepare
 from ml_train import ML_FEATURES, train_all_models
+from averages import get_averages_data
 
 ANOMALY_BOUNDS = {
     "SiO2": (17, 26),
@@ -305,6 +306,7 @@ def _build_cache_and_snapshot(
             ),
         },
         "trends": {"labels": [str(y) for y in years], "data": trends},
+        "averages": get_averages_data(df, period_type="all", year="all"),
         "correlation": {"columns": corr_cols, "matrix": corr_matrix},
         "lowStrengthDays": low_strength_list,
         "anomalies": anomalies,

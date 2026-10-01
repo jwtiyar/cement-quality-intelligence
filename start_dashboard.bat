@@ -5,7 +5,7 @@ echo ========================================================
 cd /d "%~dp0"
 
 REM 1. Set up and activate Virtual Environment
-if not exist venv (
+if not exist venv (\
     echo [INFO] Virtual environment 'venv' not found. Creating a new one...
     python -m venv venv
     if %errorlevel% neq 0 (
@@ -55,7 +55,9 @@ echo.
 echo ===========================================
 echo 2. Starting AI Dashboard Server...
 echo ===========================================
-echo Open your web browser and go to: http://127.0.0.1:8500
+echo Open your web browser and go to:
+echo   Local:     http://127.0.0.1:8500
+echo   Tailscale: http://100.71.134.118:8500
 echo (Keep this window open to keep the server running. Press Ctrl+C to stop it.)
 echo ===========================================
 echo.

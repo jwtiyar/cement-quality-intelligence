@@ -58,6 +58,23 @@ class HFO(BaseModel):
     sulfur: float = Field(default=2.5, ge=0, le=100)
 
 
+class MaterialPrices(BaseModel):
+    limestone: float = Field(default=8.0, ge=0)
+    shale: float = Field(default=12.0, ge=0)
+    sand: float = Field(default=18.0, ge=0)
+    pyrite: float = Field(default=45.0, ge=0)
+
+
+class ProcessEconomics(BaseModel):
+    currency: str = Field(default="$", max_length=10)
+    fuel_price_per_ton: float = Field(default=350.0, ge=0)
+    plant_capacity_tpd: float = Field(default=5300.0, gt=0)
+    operating_days_per_year: float = Field(default=310.0, gt=0, le=366)
+    standard_calorific: float = Field(default=9800.0, gt=0)
+    standard_heat: float = Field(default=740.0, gt=0)
+    material_prices: MaterialPrices = Field(default_factory=MaterialPrices)
+
+
 class RawMixRequest(BaseModel):
     # "calc" is the frontend's historical name for recipe mode
     mode: Literal["solve", "recipe", "calc"] = "solve"
@@ -66,6 +83,7 @@ class RawMixRequest(BaseModel):
     targets: Optional[RawMixTargets] = None
     recipe: Optional[dict[str, float]] = None
     hfo: HFO = Field(default_factory=HFO)
+    economics: Optional[ProcessEconomics] = Field(default_factory=ProcessEconomics)
 
 
 class ChatTurn(BaseModel):

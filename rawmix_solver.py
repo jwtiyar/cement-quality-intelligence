@@ -187,6 +187,122 @@ def _solve_constrained(
     return [max(0.0, v) for v in res.x]
 
 
+def _calculate_process_economics(
+    materials: dict[str, MaterialComp],
+    x_dry_norm: list[float],
+    hfo_heat: float,
+    hfo_cal: float,
+    economics_payload: dict[str, Any] | None,
+    labels: list[str],
+) -> dict[str, Any]:
+    econ = economics_payload or {}
+    currency = str(econ.get("currency", "$") or "$")
+    fuel_price = float(econ.get("fuel_price_per_ton", 350.0))
+    capacity_tpd = float(econ.get("plant_capacity_tpd", 5300.0))
+    annual_days = float(econ.get("operating_days_per_year", 310.0))
+    std_cal = float(econ.get("standard_calorific", 9800.0))
+    std_heat = float(econ.get("standard_heat", 740.0))
+
+    mat_prices_in = econ.get("material_prices") or {}
+    material_prices = {
+        "limestone": float(mat_prices_in.get("limestone", 8.0)),
+        "shale": float(mat_prices_in.get("shale", 12.0)),
+        "sand": float(mat_prices_in.get("sand", 18.0)),
+        "pyrite": float(mat_prices_in.get("pyrite", 45.0)),
+    }
+
+    # Fuel calculations: Actual vs Sinoma 9,800 kcal/kg Provider Baseline
+    sfc_actual_kg_t = (hfo_heat / hfo_cal) * 1000.0 if hfo_cal > 0 else 0.0
+    sfc_std_kg_t = (std_heat / std_cal) * 1000.0 if std_cal > 0 else 0.0
+    sfc_var_kg_t = sfc_actual_kg_t - sfc_std_kg_t
+    sfc_var_pct = (sfc_var_kg_t / sfc_std_kg_t * 100.0) if sfc_std_kg_t > 0 else 0.0
+
+    fuel_cost_actual = (sfc_actual_kg_t / 1000.0) * fuel_price
+    fuel_cost_std = (sfc_std_kg_t / 1000.0) * fuel_price
+    fuel_cost_var = fuel_cost_actual - fuel_cost_std
+
+    cost_per_gcal = (fuel_price * 1000.0 / hfo_cal) if hfo_cal > 0 else 0.0
+    cost_per_gj = cost_per_gcal / 4.184 if cost_per_gcal > 0 else 0.0
+
+    daily_fuel_actual_t = capacity_tpd * (sfc_actual_kg_t / 1000.0)
+    daily_fuel_std_t = capacity_tpd * (sfc_std_kg_t / 1000.0)
+    daily_fuel_var_t = daily_fuel_actual_t - daily_fuel_std_t
+    daily_cost_var = daily_fuel_var_t * fuel_price
+    annual_cost_var = daily_cost_var * annual_days
+
+    # Raw Materials Cost
+    rawmix_loi = sum((x_dry_norm[i] / 100.0) * materials[MATERIAL_NAMES[i]].LOI for i in range(4))
+    loi_factor = 1.0 - 0.01 * rawmix_loi
+    meal_to_clinker_factor = (1.0 / loi_factor) if loi_factor > 0 else 1.532
+
+    meal_cost_dry = sum(
+        (x_dry_norm[i] / 100.0) * material_prices[MATERIAL_NAMES[i]] for i in range(4)
+    )
+    mat_cost_clinker = meal_cost_dry * meal_to_clinker_factor
+
+    cost_breakdown = [
+        (x_dry_norm[i] / 100.0) * material_prices[MATERIAL_NAMES[i]] * meal_to_clinker_factor
+        for i in range(4)
+    ]
+
+    total_direct_cost = mat_cost_clinker + fuel_cost_actual
+    daily_direct_cost = total_direct_cost * capacity_tpd
+
+    if hfo_cal < (std_cal - 10):
+        status = "penalty"
+    elif hfo_cal > (std_cal + 10):
+        status = "optimal"
+    else:
+        status = "standard"
+
+    return {
+        "currency": currency,
+        "fuel": {
+            "price_per_ton": fuel_price,
+            "actual_calorific": round(hfo_cal, 1),
+            "actual_heat": round(hfo_heat, 1),
+            "sfc_actual_kg_t": round(sfc_actual_kg_t, 2),
+            "sfc_std_kg_t": round(sfc_std_kg_t, 2),
+            "sfc_var_kg_t": round(sfc_var_kg_t, 2),
+            "sfc_var_pct": round(sfc_var_pct, 2),
+            "cost_per_t_clinker": round(fuel_cost_actual, 2),
+            "cost_std_per_t_clinker": round(fuel_cost_std, 2),
+            "cost_var_per_t_clinker": round(fuel_cost_var, 2),
+            "cost_per_gcal": round(cost_per_gcal, 2),
+            "cost_per_gj": round(cost_per_gj, 2),
+            "daily_fuel_actual_t": round(daily_fuel_actual_t, 2),
+            "daily_fuel_std_t": round(daily_fuel_std_t, 2),
+            "daily_fuel_var_t": round(daily_fuel_var_t, 2),
+            "daily_cost_var": round(daily_cost_var, 2),
+            "annual_cost_var": round(annual_cost_var, 2),
+            "status": status,
+            "calorific_deficit": round(std_cal - hfo_cal, 1),
+        },
+        "raw_materials": {
+            "meal_to_clinker_factor": round(meal_to_clinker_factor, 3),
+            "rawmix_loi": round(rawmix_loi, 2),
+            "cost_per_t_rawmeal": round(meal_cost_dry, 2),
+            "cost_per_t_clinker": round(mat_cost_clinker, 2),
+            "breakdown_per_t_clinker": {
+                labels[i]: round(cost_breakdown[i], 2) for i in range(4)
+            },
+            "prices": {
+                labels[i]: material_prices[MATERIAL_NAMES[i]] for i in range(4)
+            },
+        },
+        "total_direct_cost_per_t_clinker": round(total_direct_cost, 2),
+        "daily_total_direct_cost": round(daily_direct_cost, 2),
+        "provider_baseline": {
+            "provider": "Sinoma Sulaymaniyah 5000t/d Project Standard",
+            "standard_calorific": std_cal,
+            "standard_heat": std_heat,
+            "standard_sfc_kg_t": round(sfc_std_kg_t, 2),
+            "plant_capacity_tpd": capacity_tpd,
+            "operating_days_per_year": annual_days,
+        },
+    }
+
+
 def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     mode = payload.get("mode", "solve")
     if mode == "calc":
@@ -282,6 +398,19 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
 
     labels = ["Limestone", "Clay", "Sand", corrector_label]
     diagnostics = rawmix_diagnostics(cement_type, cl_lsf, cl_sm, cl_am, phases.C3A, lc)
+    economics = _calculate_process_economics(
+        materials, x_dry_norm, hfo_heat, hfo_cal, payload.get("economics"), labels
+    )
+    if hfo_cal < 9790:
+        diagnostics.append({
+            "severity": "warning",
+            "message": (
+                f"Fuel Net Calorific Value ({hfo_cal:.0f} kcal/kg) is below Sinoma design standard (9,800 kcal/kg). "
+                f"Specific fuel consumption rises to {economics['fuel']['sfc_actual_kg_t']:.2f} kg/t "
+                f"({economics['fuel']['sfc_var_kg_t']:+.2f} kg/t, {economics['fuel']['sfc_var_pct']:+.1f}% fuel penalty), "
+                f"costing +{economics['currency']}{economics['fuel']['cost_var_per_t_clinker']:.2f}/ton clinker extra in thermal energy."
+            ),
+        })
 
     residuals = None
     feasibility = "valid"
@@ -413,4 +542,5 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         "feasibility": feasibility,
         "solve_method": solve_method if mode == "solve" else "recipe",
         "explanation": "".join(explanation_parts),
+        "economics": economics,
     }

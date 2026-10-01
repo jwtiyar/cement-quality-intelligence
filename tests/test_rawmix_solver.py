@@ -301,3 +301,133 @@ class TestPlantBenchmark:
         assert clinker["LSF"] == pytest.approx(99.0, abs=0.1)
         assert clinker["SM"] == pytest.approx(2.4, abs=0.05)
         assert clinker["AM"] == pytest.approx(1.6, abs=0.05)
+
+class TestPredefinedPresets:
+    """Verifies the predefined frontend presets for OPC, SBC, and SRC."""
+
+    LIMESTONE = {"SiO2": 1.62, "Al2O3": 0.44, "Fe2O3": 0.41, "CaO": 53.51, "MgO": 1.49, "Na2O": 0.02, "K2O": 0.12, "SO3": 0.08, "LOI": 42.41, "H2O": 5.0}
+    CLAY = {"SiO2": 47.96, "Al2O3": 11.82, "Fe2O3": 6.08, "CaO": 12.98, "MgO": 3.73, "Na2O": 0.32, "K2O": 1.51, "SO3": 0.11, "LOI": 15.08, "H2O": 8.5}
+    SAND = {"SiO2": 87.89, "Al2O3": 4.50, "Fe2O3": 2.75, "CaO": 0.71, "MgO": 0.92, "Na2O": 0.16, "K2O": 0.15, "SO3": 0.18, "LOI": 2.23, "H2O": 3.3}
+    SLAG = {"SiO2": 23.60, "Al2O3": 8.25, "Fe2O3": 27.69, "CaO": 32.15, "MgO": 5.93, "Na2O": 0.20, "K2O": 0.50, "SO3": 1.50, "LOI": 0.90, "H2O": 6.5}
+    IRON_ORE = {"SiO2": 49.00, "Al2O3": 0.69, "Fe2O3": 37.18, "CaO": 1.00, "MgO": 0.90, "Na2O": 0.29, "K2O": 0.81, "SO3": 1.50, "LOI": 8.55, "H2O": 7.8}
+    HFO = {"heat": 730, "calorific": 9800, "sulfur": 2.5}
+
+    @pytest.mark.parametrize("cement_type,corrector,targets,recipe", [
+        ("OPC", SLAG, {"LSF": 95.0, "SM": 2.35, "AM": 1.40}, {"limestone": 72.32, "shale": 24.92, "sand": 0.37, "pyrite": 2.39}),
+        ("SBC", SLAG, {"LSF": 94.0, "SM": 2.35, "AM": 1.40}, {"limestone": 72.06, "shale": 25.16, "sand": 0.37, "pyrite": 2.42}),
+        ("SRC", IRON_ORE, {"LSF": 95.0, "SM": 2.25, "AM": 0.80}, {"limestone": 74.15, "shale": 19.97, "sand": 0.75, "pyrite": 5.13}),
+    ])
+    def test_preset_solve_mode(self, cement_type, corrector, targets, recipe):
+        materials = {
+            "limestone": self.LIMESTONE,
+            "shale": self.CLAY,
+            "sand": self.SAND,
+            "pyrite": corrector,
+        }
+        payload = {
+            "mode": "solve",
+            "cement_type": cement_type,
+            "materials": materials,
+            "targets": targets,
+            "hfo": self.HFO,
+        }
+        res = calculate_rawmix(payload)
+        assert res["feasibility"] in {"feasible", "valid"}
+        assert not any(d["severity"] == "error" for d in res["diagnostics"])
+        
+        # Verify clinker moduli reach target setpoints
+        cl = res["clinker"]
+        assert cl["LSF"] == pytest.approx(targets["LSF"], abs=0.1)
+        assert cl["SM"] == pytest.approx(targets["SM"], abs=0.05)
+        assert cl["AM"] == pytest.approx(targets["AM"], abs=0.05)
+        
+        # For SRC, C3A must satisfy sulfate-resistance ASTM C150 standard (<= 5.0%)
+        if cement_type == "SRC":
+            assert res["phases"]["C3A"] <= 5.0
+
+    @pytest.mark.parametrize("cement_type,corrector,targets,recipe", [
+        ("OPC", SLAG, {"LSF": 95.0, "SM": 2.35, "AM": 1.40}, {"limestone": 72.32, "shale": 24.92, "sand": 0.37, "pyrite": 2.39}),
+        ("SBC", SLAG, {"LSF": 94.0, "SM": 2.35, "AM": 1.40}, {"limestone": 72.06, "shale": 25.16, "sand": 0.37, "pyrite": 2.42}),
+        ("SRC", IRON_ORE, {"LSF": 95.0, "SM": 2.25, "AM": 0.80}, {"limestone": 74.15, "shale": 19.97, "sand": 0.75, "pyrite": 5.13}),
+    ])
+    def test_preset_recipe_mode(self, cement_type, corrector, targets, recipe):
+        materials = {
+            "limestone": self.LIMESTONE,
+            "shale": self.CLAY,
+            "sand": self.SAND,
+            "pyrite": corrector,
+        }
+        payload = {
+            "mode": "recipe",
+            "cement_type": cement_type,
+            "materials": materials,
+            "recipe": recipe,
+            "hfo": self.HFO,
+        }
+        res = calculate_rawmix(payload)
+        assert res["feasibility"] in {"feasible", "valid"}
+        assert not any(d["severity"] == "error" for d in res["diagnostics"])
+        cl = res["clinker"]
+        assert cl["LSF"] == pytest.approx(targets["LSF"], abs=0.2)
+        assert cl["SM"] == pytest.approx(targets["SM"], abs=0.05)
+        assert cl["AM"] == pytest.approx(targets["AM"], abs=0.05)
+
+    def test_economics_calorific_comparison_sinoma_baseline(self):
+        materials = {
+            "limestone": self.LIMESTONE,
+            "shale": self.CLAY,
+            "sand": self.SAND,
+            "pyrite": self.SLAG,
+        }
+        # Baseline at 9800 kcal/kg
+        payload_base = {
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": materials,
+            "targets": {"LSF": 95.0, "SM": 2.35, "AM": 1.40},
+            "hfo": {"heat": 740, "calorific": 9800, "sulfur": 2.5},
+            "economics": {
+                "currency": "$",
+                "fuel_price_per_ton": 350.0,
+                "plant_capacity_tpd": 5300.0,
+                "operating_days_per_year": 310.0,
+            },
+        }
+        res_base = calculate_rawmix(payload_base)
+        econ_base = res_base["economics"]
+        assert econ_base["fuel"]["status"] == "standard"
+        assert econ_base["fuel"]["sfc_actual_kg_t"] == pytest.approx(75.51, abs=0.05)
+        assert econ_base["fuel"]["sfc_var_kg_t"] == pytest.approx(0.0, abs=0.05)
+        assert econ_base["fuel"]["cost_var_per_t_clinker"] == pytest.approx(0.0, abs=0.05)
+
+        # Dropped calorific to 9200 kcal/kg (user scenario)
+        payload_low = {
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": materials,
+            "targets": {"LSF": 95.0, "SM": 2.35, "AM": 1.40},
+            "hfo": {"heat": 740, "calorific": 9200, "sulfur": 2.5},
+            "economics": {
+                "currency": "$",
+                "fuel_price_per_ton": 350.0,
+                "plant_capacity_tpd": 5300.0,
+                "operating_days_per_year": 310.0,
+            },
+        }
+        res_low = calculate_rawmix(payload_low)
+        econ_low = res_low["economics"]
+        assert econ_low["fuel"]["status"] == "penalty"
+        assert econ_low["fuel"]["calorific_deficit"] == 600.0
+        # SFC rises to ~80.43 kg/t (+4.92 kg/t or +6.52%)
+        assert econ_low["fuel"]["sfc_actual_kg_t"] == pytest.approx(80.43, abs=0.05)
+        assert econ_low["fuel"]["sfc_var_kg_t"] == pytest.approx(4.92, abs=0.05)
+        assert econ_low["fuel"]["sfc_var_pct"] == pytest.approx(6.52, abs=0.1)
+        # Cost variance per ton clinker: ~ +$1.72/t
+        assert econ_low["fuel"]["cost_var_per_t_clinker"] == pytest.approx(1.72, abs=0.05)
+        # Extra fuel tons/day: ~ +26.1 tons/day
+        assert econ_low["fuel"]["daily_fuel_var_t"] == pytest.approx(26.1, abs=0.2)
+        # Daily cost penalty: ~ +$9,135/day
+        assert econ_low["fuel"]["daily_cost_var"] == pytest.approx(9135.0, abs=50.0)
+        # Warning diagnostic generated
+        assert any("below Sinoma design standard" in d["message"] for d in res_low["diagnostics"])
+

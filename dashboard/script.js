@@ -20,19 +20,19 @@ const CEMENT_COLORS = {
     get OPC() {
         return {
             border: themeToken('--cement-opc') || '#48a994',
-            bg: themeToken('--accent-subtle') || 'rgba(72, 169, 148, 0.12)'
+            bg: themeToken('--accent-subtle') || 'rgba(72, 169, 148, 0.14)'
         };
     },
     get SRC() {
         return {
             border: themeToken('--cement-src') || '#d49341',
-            bg: 'transparent'
+            bg: 'rgba(212, 147, 65, 0.16)'
         };
     },
     get SBC() {
         return {
             border: themeToken('--cement-sbc') || '#5ea1c9',
-            bg: 'transparent'
+            bg: 'rgba(94, 161, 201, 0.16)'
         };
     }
 };
@@ -52,17 +52,15 @@ function syncChartTheme() {
     Chart.defaults.borderColor = grid;
 
     if (trendChart && trendChart.data?.datasets) {
-        if (trendChart.data.datasets[0]) {
-            trendChart.data.datasets[0].borderColor = CEMENT_COLORS.OPC.border;
-            trendChart.data.datasets[0].backgroundColor = CEMENT_COLORS.OPC.bg;
-            trendChart.data.datasets[0].pointBackgroundColor = CEMENT_COLORS.OPC.border;
-            trendChart.data.datasets[0].pointBorderColor = themeToken('--panel-bg');
-        }
-        if (trendChart.data.datasets[1]) {
-            trendChart.data.datasets[1].borderColor = CEMENT_COLORS.SRC.border;
-        }
-        if (trendChart.data.datasets[2]) {
-            trendChart.data.datasets[2].borderColor = CEMENT_COLORS.SBC.border;
+        ['OPC', 'SRC', 'SBC'].forEach((c, idx) => {
+            if (trendChart.data.datasets[idx]) {
+                trendChart.data.datasets[idx].borderColor = CEMENT_COLORS[c].border;
+                trendChart.data.datasets[idx].pointBackgroundColor = CEMENT_COLORS[c].border;
+                trendChart.data.datasets[idx].pointBorderColor = themeToken('--panel-bg') || '#ffffff';
+            }
+        });
+        if (typeof applyTrendFilterStyles === 'function') {
+            applyTrendFilterStyles();
         }
     }
 
@@ -216,7 +214,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnSync.textContent = 'Refreshing…';
             btnSync.disabled = true;
             try {
-                const res = await fetch('/api/refresh', { method: 'POST' });
+                let res = await fetch('/api/refresh', { method: 'POST' });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    const detail = errData.detail || '';
+                    if (detail.includes('allow_deletions=True') || detail.includes('changed or missing values')) {
+                        const confirmed = confirm(
+                            `Dataset notice:\n${detail}\n\nDo you want to force refresh and accept these changes?`
+                        );
+                        if (confirmed) {
+                            btnSync.textContent = 'Force refreshing…';
+                            res = await fetch('/api/refresh?allow_deletions=true', { method: 'POST' });
+                        }
+                    }
+                }
+
                 if (res.ok) {
                     const data = await res.json();
                     btnSync.textContent = 'Data refreshed';
@@ -231,11 +243,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         showAppNotice('Data is current. No new daily reports were found.', 'success');
                     }
                     
-                    window.location.reload();
+                    setTimeout(() => window.location.reload(), 1500);
                 } else {
+                    const errData = await res.json().catch(() => ({}));
                     btnSync.textContent = 'Refresh failed';
-                    showAppNotice('Could not refresh the dataset.', 'error');
-                    setTimeout(() => { btnSync.innerHTML = originalText; btnSync.disabled = false; }, 2000);
+                    showAppNotice(errData.detail || 'Could not refresh the dataset.', 'error');
+                    setTimeout(() => { btnSync.innerHTML = originalText; btnSync.disabled = false; }, 3000);
                 }
             } catch (e) {
                 btnSync.textContent = 'Refresh failed';
@@ -277,24 +290,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         
-        // 1. Populate Summary Statistics
-        document.getElementById('totalRecords').innerText = dashboardData.summary.totalRecords.toLocaleString();
-        
-        document.getElementById('avgStrength').innerHTML = `
-            <div style="font-size: 1.4rem; display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem;">
-                <div><span style="color: #38bdf8; font-size: 0.95rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${dashboardData.summary.avgStrength.OPC || '--'} <span class="unit">MPa</span></div>
-                <div><span style="color: #10b981; font-size: 0.95rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${dashboardData.summary.avgStrength.SRC || '--'} <span class="unit">MPa</span></div>
-                <div><span style="color: #8b5cf6; font-size: 0.95rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${dashboardData.summary.avgStrength.SBC || '--'} <span class="unit">MPa</span></div>
-            </div>`;
-            
-        document.getElementById('avgC3S').innerHTML = `
-            <div style="font-size: 1.4rem; display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem;">
-                <div><span style="color: #38bdf8; font-size: 0.95rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${dashboardData.summary.avgC3S.OPC || '--'} <span class="unit">%</span></div>
-                <div><span style="color: #10b981; font-size: 0.95rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${dashboardData.summary.avgC3S.SRC || '--'} <span class="unit">%</span></div>
-                <div><span style="color: #8b5cf6; font-size: 0.95rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${dashboardData.summary.avgC3S.SBC || '--'} <span class="unit">%</span></div>
-            </div>`;
-
-        document.getElementById('yearsCoverage').innerText = dashboardData.summary.yearsCoverage;
+        // 1. Populate Summary Statistics & Period Controls
+        if (dashboardData.averages) {
+            setupPeriodAveragesControls(dashboardData.averages);
+            renderSummaryCards(dashboardData.averages);
+        } else if (dashboardData.summary) {
+            renderSummaryCards({
+                totalRecords: dashboardData.summary.totalRecords,
+                avgStrength: dashboardData.summary.avgStrength,
+                avgC3S: dashboardData.summary.avgC3S,
+                yearsCoverage: dashboardData.summary.yearsCoverage,
+                periodLabel: 'Full Dataset (All Time)',
+                seasonalBreakdown: []
+            });
+        }
 
         // Populate Anomaly Banner
         const anomalyBanner = document.getElementById('anomaly_banner');
@@ -327,6 +336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialize with default 28-day Strength
         initChart('Strength_28D');
         updateEraSubtitle('Strength_28D');
+        setupTrendChartControls();
 
         // 3. Populate Correlation Matrix (Heatmap Table)
         buildCorrelationTable();
@@ -381,7 +391,16 @@ const eraLinePlugin = {
         const eraIndex = labels.indexOf(eraYear);
         if (eraIndex < 0) return;
 
-        const meta = chart.getDatasetMeta(0);
+        let meta = chart.getDatasetMeta(0);
+        if (!meta || !meta.data || !meta.data[eraIndex] || meta.hidden) {
+            for (let i = 1; i < (chart.data.datasets ? chart.data.datasets.length : 0); i++) {
+                const candidate = chart.getDatasetMeta(i);
+                if (candidate && candidate.data && candidate.data[eraIndex] && !candidate.hidden) {
+                    meta = candidate;
+                    break;
+                }
+            }
+        }
         if (!meta || !meta.data || !meta.data[eraIndex]) return;
         const x = meta.data[eraIndex].x;
         const { top, bottom } = chart.chartArea;
@@ -438,33 +457,146 @@ const eraLinePlugin = {
 Chart.register(eraLinePlugin);
 // ────────────────────────────────────────────────────────────────────────────
 
+// --- Trend Chart State & Functions ---
+let currentTrendParam = 'Strength_28D';
+let currentTrendFilter = 'all'; // 'all', 'OPC', 'SRC', 'SBC'
+let trendOffsetActive = false;
+
+function getTrendDisplayData(param) {
+    if (!dashboardData || !dashboardData.trends || !dashboardData.trends.data) {
+        return { OPC: [], SRC: [], SBC: [] };
+    }
+    const rawData = dashboardData.trends.data[param];
+    if (!rawData) {
+        return { OPC: [], SRC: [], SBC: [] };
+    }
+    if (!trendOffsetActive) {
+        return {
+            OPC: (rawData.OPC || []).slice(),
+            SRC: (rawData.SRC || []).slice(),
+            SBC: (rawData.SBC || []).slice()
+        };
+    }
+
+    const allVals = [...(rawData.OPC || []), ...(rawData.SRC || []), ...(rawData.SBC || [])].filter(v => v !== null && !isNaN(v));
+    if (!allVals.length) {
+        return {
+            OPC: (rawData.OPC || []).slice(),
+            SRC: (rawData.SRC || []).slice(),
+            SBC: (rawData.SBC || []).slice()
+        };
+    }
+
+    const minVal = Math.min(...allVals);
+    const maxVal = Math.max(...allVals);
+    const range = (maxVal - minVal) || 1;
+    const nudge = range * 0.016; // 1.6% visual offset
+
+    const opcOut = [];
+    const srcOut = [];
+    const sbcOut = [];
+
+    const len = dashboardData.trends.labels ? dashboardData.trends.labels.length : (rawData.OPC || []).length;
+    for (let i = 0; i < len; i++) {
+        const o = rawData.OPC && rawData.OPC[i] !== undefined ? rawData.OPC[i] : null;
+        const s = rawData.SRC && rawData.SRC[i] !== undefined ? rawData.SRC[i] : null;
+        const b = rawData.SBC && rawData.SBC[i] !== undefined ? rawData.SBC[i] : null;
+
+        let oNudge = 0;
+        let sNudge = 0;
+        let bNudge = 0;
+
+        // Micro-offset when OPC and SRC occupy the same visual level
+        if (o !== null && s !== null && Math.abs(o - s) < (range * 0.04)) {
+            oNudge -= nudge;
+            sNudge += nudge;
+        }
+
+        if (b !== null && s !== null && Math.abs(b - s) < (range * 0.04)) {
+            bNudge += nudge * 1.5;
+        } else if (b !== null && o !== null && Math.abs(b - o) < (range * 0.04)) {
+            bNudge += nudge * 1.5;
+        }
+
+        opcOut.push(o !== null ? +(o + oNudge).toFixed(3) : null);
+        srcOut.push(s !== null ? +(s + sNudge).toFixed(3) : null);
+        sbcOut.push(b !== null ? +(b + bNudge).toFixed(3) : null);
+    }
+
+    return { OPC: opcOut, SRC: srcOut, SBC: sbcOut };
+}
+
 // Initialize Trend Chart
 function initChart(param) {
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    const paramData = dashboardData.trends.data[param];
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (param) currentTrendParam = param;
     
     Chart.defaults.color = themeToken('--text-secondary');
     Chart.defaults.font.family = "system-ui";
     
-    _eraLineActive = (param === 'Strength_28D') && !!dashboardData.strength28Era;
+    _eraLineActive = (currentTrendParam === 'Strength_28D') && !!dashboardData.strength28Era;
+
+    const dispData = getTrendDisplayData(currentTrendParam);
+    const isIsolated = currentTrendFilter !== 'all';
 
     const datasets = [
         {
-            label: 'OPC (Ordinary Portland)', data: paramData.OPC,
-            borderColor: CEMENT_COLORS.OPC.border, backgroundColor: CEMENT_COLORS.OPC.bg,
-            borderWidth: 3, tension: 0.35, fill: true, spanGaps: false,
+            label: 'OPC (Ordinary Portland)',
+            data: dispData.OPC,
+            borderColor: CEMENT_COLORS.OPC.border,
+            backgroundColor: isIsolated && currentTrendFilter === 'OPC' ? CEMENT_COLORS.OPC.bg : 'transparent',
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: false,
+            spanGaps: false,
+            pointStyle: 'circle',
+            pointRadius: 5,
+            pointHoverRadius: 8,
             pointBackgroundColor: CEMENT_COLORS.OPC.border,
-            pointBorderColor: themeToken('--panel'), pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7
+            pointBorderColor: themeToken('--panel-bg') || '#ffffff',
+            pointBorderWidth: 2,
+            order: 3,
+            hidden: currentTrendFilter !== 'all' && currentTrendFilter !== 'OPC'
         },
         {
-            label: 'SRC (Sulfate Resisting)', data: paramData.SRC,
-            borderColor: CEMENT_COLORS.SRC.border, backgroundColor: CEMENT_COLORS.SRC.bg,
-            borderWidth: 2, tension: 0.35, borderDash: [5, 5], pointRadius: 4, spanGaps: false
+            label: 'SRC (Sulfate Resisting)',
+            data: dispData.SRC,
+            borderColor: CEMENT_COLORS.SRC.border,
+            backgroundColor: isIsolated && currentTrendFilter === 'SRC' ? CEMENT_COLORS.SRC.bg : 'transparent',
+            borderWidth: 2.5,
+            tension: 0.35,
+            borderDash: [8, 4],
+            fill: false,
+            spanGaps: false,
+            pointStyle: 'rectRot',
+            pointRadius: 7,
+            pointHoverRadius: 10,
+            pointBackgroundColor: CEMENT_COLORS.SRC.border,
+            pointBorderColor: themeToken('--panel-bg') || '#ffffff',
+            pointBorderWidth: 2,
+            order: 2, // In front of OPC
+            hidden: currentTrendFilter !== 'all' && currentTrendFilter !== 'SRC'
         },
         {
-            label: 'SBC', data: paramData.SBC,
-            borderColor: CEMENT_COLORS.SBC.border, backgroundColor: CEMENT_COLORS.SBC.bg,
-            borderWidth: 2, tension: 0.35, borderDash: [5, 5], pointRadius: 4, spanGaps: false
+            label: 'SBC',
+            data: dispData.SBC,
+            borderColor: CEMENT_COLORS.SBC.border,
+            backgroundColor: isIsolated && currentTrendFilter === 'SBC' ? CEMENT_COLORS.SBC.bg : 'transparent',
+            borderWidth: 2.5,
+            tension: 0.35,
+            borderDash: [3, 3],
+            fill: false,
+            spanGaps: false,
+            pointStyle: 'triangle',
+            pointRadius: 7,
+            pointHoverRadius: 10,
+            pointBackgroundColor: CEMENT_COLORS.SBC.border,
+            pointBorderColor: themeToken('--panel-bg') || '#ffffff',
+            pointBorderWidth: 2,
+            order: 1, // In front of OPC
+            hidden: currentTrendFilter !== 'all' && currentTrendFilter !== 'SBC'
         }
     ];
 
@@ -480,7 +612,47 @@ function initChart(param) {
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { padding: 15, usePointStyle: true, pointStyle: 'circle' }
+                    labels: {
+                        padding: 15,
+                        usePointStyle: true,
+                        font: { size: 12, family: "system-ui" }
+                    },
+                    onClick: (e, legendItem, legend) => {
+                        const index = legendItem.datasetIndex;
+                        const ci = legend.chart;
+                        if (ci.isDatasetVisible(index)) {
+                            ci.hide(index);
+                            legendItem.hidden = true;
+                        } else {
+                            ci.show(index);
+                            legendItem.hidden = false;
+                        }
+                        syncTrendFilterButtons();
+                    },
+                    onHover: (e, legendItem, legend) => {
+                        if (currentTrendFilter !== 'all') return;
+                        const chart = legend.chart;
+                        const idx = legendItem.datasetIndex;
+                        chart.data.datasets.forEach((ds, i) => {
+                            if (i === idx) {
+                                ds.borderWidth = 3.8;
+                                ds.order = 0;
+                            } else {
+                                ds.borderWidth = 1.5;
+                                ds.order = i + 2;
+                            }
+                        });
+                        chart.update('none');
+                    },
+                    onLeave: (e, legendItem, legend) => {
+                        if (currentTrendFilter !== 'all') return;
+                        const chart = legend.chart;
+                        chart.data.datasets.forEach((ds, i) => {
+                            ds.borderWidth = 2.5;
+                            ds.order = i === 0 ? 3 : (i === 1 ? 2 : 1);
+                        });
+                        chart.update('none');
+                    }
                 },
                 tooltip: {
                     backgroundColor: themeToken('--chart-tooltip'),
@@ -488,7 +660,19 @@ function initChart(param) {
                     bodyFont: { size: 12, family: "system-ui" },
                     padding: 12,
                     cornerRadius: 8,
-                    displayColors: true
+                    displayColors: true,
+                    usePointStyle: true,
+                    callbacks: {
+                        label: function(context) {
+                            const cKey = context.datasetIndex === 0 ? 'OPC' : (context.datasetIndex === 1 ? 'SRC' : 'SBC');
+                            const orig = dashboardData?.trends?.data?.[currentTrendParam]?.[cKey]?.[context.dataIndex];
+                            const displayVal = orig !== null && orig !== undefined ? Number(orig).toFixed(2) : 'N/A';
+                            const unit = getParamUnit(currentTrendParam).replace(/.*\((.*)\)/, '$1') || '';
+                            const cLabel = context.dataset.label.split(' ')[0];
+                            const isOffset = trendOffsetActive && orig !== null && orig !== undefined && Math.abs(context.raw - orig) > 0.001;
+                            return ` ${cLabel}: ${displayVal} ${unit}${isOffset ? ' [offset for view]' : ''}`;
+                        }
+                    }
                 }
             },
             scales: {
@@ -497,24 +681,104 @@ function initChart(param) {
                 },
                 y: {
                     grid: { color: themeToken('--chart-grid'), drawBorder: false },
-                    title: { display: true, text: getParamUnit(param), font: { size: 12 } }
+                    title: { display: true, text: getParamUnit(currentTrendParam), font: { size: 12 } }
                 }
             },
             interaction: { mode: 'index', intersect: false }
         }
     });
+
+    applyTrendFilterStyles();
 }
 
 // Update Trend Chart dynamically
 function updateChart(param) {
     if (!trendChart) return;
-    const paramData = dashboardData.trends.data[param];
-    _eraLineActive = (param === 'Strength_28D') && !!dashboardData.strength28Era;
-    trendChart.data.datasets[0].data = paramData.OPC;
-    trendChart.data.datasets[1].data = paramData.SRC;
-    trendChart.data.datasets[2].data = paramData.SBC;
-    trendChart.options.scales.y.title.text = getParamUnit(param);
+    if (param) currentTrendParam = param;
+    _eraLineActive = (currentTrendParam === 'Strength_28D') && !!dashboardData.strength28Era;
+
+    const dispData = getTrendDisplayData(currentTrendParam);
+    trendChart.data.datasets[0].data = dispData.OPC;
+    trendChart.data.datasets[1].data = dispData.SRC;
+    trendChart.data.datasets[2].data = dispData.SBC;
+    trendChart.options.scales.y.title.text = getParamUnit(currentTrendParam);
+
+    applyTrendFilterStyles();
     trendChart.update();
+}
+
+function applyTrendFilterStyles() {
+    if (!trendChart) return;
+    const isIsolated = currentTrendFilter !== 'all';
+
+    // OPC
+    trendChart.data.datasets[0].hidden = isIsolated && currentTrendFilter !== 'OPC';
+    trendChart.data.datasets[0].fill = isIsolated && currentTrendFilter === 'OPC';
+    trendChart.data.datasets[0].backgroundColor = (isIsolated && currentTrendFilter === 'OPC') ? CEMENT_COLORS.OPC.bg : 'transparent';
+    trendChart.data.datasets[0].borderWidth = (isIsolated && currentTrendFilter === 'OPC') ? 3 : 2.5;
+    trendChart.data.datasets[0].order = (isIsolated && currentTrendFilter === 'OPC') ? 0 : 3;
+
+    // SRC
+    trendChart.data.datasets[1].hidden = isIsolated && currentTrendFilter !== 'SRC';
+    trendChart.data.datasets[1].fill = isIsolated && currentTrendFilter === 'SRC';
+    trendChart.data.datasets[1].backgroundColor = (isIsolated && currentTrendFilter === 'SRC') ? CEMENT_COLORS.SRC.bg : 'transparent';
+    trendChart.data.datasets[1].borderDash = (isIsolated && currentTrendFilter === 'SRC') ? [] : [8, 4];
+    trendChart.data.datasets[1].borderWidth = (isIsolated && currentTrendFilter === 'SRC') ? 3 : 2.5;
+    trendChart.data.datasets[1].order = (isIsolated && currentTrendFilter === 'SRC') ? 0 : 2;
+
+    // SBC
+    trendChart.data.datasets[2].hidden = isIsolated && currentTrendFilter !== 'SBC';
+    trendChart.data.datasets[2].fill = isIsolated && currentTrendFilter === 'SBC';
+    trendChart.data.datasets[2].backgroundColor = (isIsolated && currentTrendFilter === 'SBC') ? CEMENT_COLORS.SBC.bg : 'transparent';
+    trendChart.data.datasets[2].borderDash = (isIsolated && currentTrendFilter === 'SBC') ? [] : [3, 3];
+    trendChart.data.datasets[2].borderWidth = (isIsolated && currentTrendFilter === 'SBC') ? 3 : 2.5;
+    trendChart.data.datasets[2].order = (isIsolated && currentTrendFilter === 'SBC') ? 0 : 1;
+}
+
+function setupTrendChartControls() {
+    const filters = document.querySelectorAll('.trend-cement-btn');
+    filters.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetType = btn.getAttribute('data-type');
+            if (currentTrendFilter === targetType && targetType !== 'all') {
+                currentTrendFilter = 'all';
+            } else {
+                currentTrendFilter = targetType;
+            }
+            filters.forEach(b => {
+                b.classList.toggle('active', b.getAttribute('data-type') === currentTrendFilter);
+            });
+            applyTrendFilterStyles();
+            trendChart.update();
+        });
+    });
+
+    const offsetToggle = document.getElementById('trendOffsetToggle');
+    if (offsetToggle) {
+        offsetToggle.addEventListener('change', (e) => {
+            trendOffsetActive = e.target.checked;
+            updateChart();
+        });
+    }
+}
+
+function syncTrendFilterButtons() {
+    if (!trendChart) return;
+    const opcVisible = trendChart.isDatasetVisible(0);
+    const srcVisible = trendChart.isDatasetVisible(1);
+    const sbcVisible = trendChart.isDatasetVisible(2);
+
+    let activeType = 'all';
+    if (opcVisible && !srcVisible && !sbcVisible) activeType = 'OPC';
+    else if (!opcVisible && srcVisible && !sbcVisible) activeType = 'SRC';
+    else if (!opcVisible && !srcVisible && sbcVisible) activeType = 'SBC';
+    else if (opcVisible && srcVisible && sbcVisible) activeType = 'all';
+    else activeType = 'custom';
+
+    currentTrendFilter = activeType;
+    document.querySelectorAll('.trend-cement-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-type') === activeType);
+    });
 }
 
 function getParamUnit(param) {
@@ -545,24 +809,48 @@ function updateEraSubtitle(param) {
 // Generate Correlation Grid (Heatmap Table)
 function buildCorrelationTable() {
     const table = document.getElementById('correlationTable');
-    const cols = dashboardData.correlation.columns;
+    if (!table || !dashboardData || !dashboardData.correlation) return;
+    const cols = dashboardData.correlation.columns || [];
     const matrix = dashboardData.correlation.matrix;
+    const matrixDict = dashboardData.correlation.matrixDict;
+    if (!cols.length || (!matrix && !matrixDict)) return;
 
     // Build header row
     let headerHTML = '<thead><tr><th>Feature</th>';
     cols.forEach(col => {
-        headerHTML += `<th>${col.replace('_', ' ')}</th>`;
+        headerHTML += `<th>${escapeHtml(col.replace(/_/g, ' '))}</th>`;
     });
     headerHTML += '</tr></thead>';
 
     // Build body rows
     let bodyHTML = '<tbody>';
-    cols.forEach(rowCol => {
-        bodyHTML += `<tr><td style="font-weight: 600; text-align: left; background: var(--panel-header); font-family: var(--font-sans);">${rowCol.replace('_', ' ')}</td>`;
-        cols.forEach(colCol => {
-            const val = matrix[rowCol][colCol] || 0;
-            const style = getCorrelationStyle(val);
-            bodyHTML += `<td style="background-color: ${style.bg}; color: ${style.color}; font-weight: 600; text-align: center;">${val.toFixed(2)}</td>`;
+    cols.forEach((rowCol, rIdx) => {
+        bodyHTML += `<tr><td style="font-weight: 600; text-align: left; background: var(--panel-header); font-family: var(--font-sans);">${escapeHtml(rowCol.replace(/_/g, ' '))}</td>`;
+        cols.forEach((colCol, cIdx) => {
+            let val = 0;
+            // 1. Try matrixDict if available
+            if (matrixDict && matrixDict[rowCol] && matrixDict[rowCol][colCol] !== undefined) {
+                val = matrixDict[rowCol][colCol];
+            }
+            // 2. Try 2D array by index: matrix[rIdx][cIdx]
+            else if (Array.isArray(matrix)) {
+                if (matrix[rIdx] && matrix[rIdx][cIdx] !== undefined) {
+                    val = matrix[rIdx][cIdx];
+                } else if (matrix[rowCol] && matrix[rowCol][colCol] !== undefined) {
+                    val = matrix[rowCol][colCol];
+                }
+            }
+            // 3. Try object dictionary: matrix[rowCol][colCol]
+            else if (matrix && typeof matrix === 'object') {
+                if (matrix[rowCol] && matrix[rowCol][colCol] !== undefined) {
+                    val = matrix[rowCol][colCol];
+                } else if (matrix[rIdx] && matrix[rIdx][cIdx] !== undefined) {
+                    val = matrix[rIdx][cIdx];
+                }
+            }
+            const numVal = typeof val === 'number' ? val : (parseFloat(val) || 0);
+            const style = getCorrelationStyle(numVal);
+            bodyHTML += `<td style="background-color: ${style.bg}; color: ${style.color}; font-weight: 600; text-align: center;">${numVal.toFixed(2)}</td>`;
         });
         bodyHTML += '</tr>';
     });
@@ -1332,6 +1620,19 @@ async function calculateRawMixProportions() {
             heat: parseFloat(document.getElementById('raw_hfo_heat').value),
             calorific: parseFloat(document.getElementById('raw_hfo_cal').value),
             sulfur: parseFloat(document.getElementById('raw_hfo_sulfur').value)
+        },
+        economics: {
+            currency: document.getElementById('raw_currency') ? document.getElementById('raw_currency').value : '$',
+            fuel_price_per_ton: parseFloat(document.getElementById('raw_fuel_price') ? document.getElementById('raw_fuel_price').value : 350),
+            plant_capacity_tpd: parseFloat(document.getElementById('raw_plant_capacity') ? document.getElementById('raw_plant_capacity').value : 5300),
+            standard_calorific: 9800,
+            standard_heat: 740,
+            material_prices: {
+                limestone: parseFloat(document.getElementById('raw_ls_price') ? document.getElementById('raw_ls_price').value : 8),
+                shale: parseFloat(document.getElementById('raw_sh_price') ? document.getElementById('raw_sh_price').value : 12),
+                sand: parseFloat(document.getElementById('raw_sd_price') ? document.getElementById('raw_sd_price').value : 18),
+                pyrite: parseFloat(document.getElementById('raw_py_price') ? document.getElementById('raw_py_price').value : 45)
+            }
         }
     };
 
@@ -1354,11 +1655,21 @@ async function calculateRawMixProportions() {
         ? { LSF: 'raw_target_LSF', SM: 'raw_target_SM', AM: 'raw_target_AM' }
         : { limestone: 'raw_recipe_ls', shale: 'raw_recipe_sh', sand: 'raw_recipe_sd', pyrite: 'raw_recipe_py' };
 
+    const econFields = {
+        'fuel price': 'raw_fuel_price',
+        'plant capacity': 'raw_plant_capacity',
+        'limestone price': 'raw_ls_price',
+        'clay price': 'raw_sh_price',
+        'sand price': 'raw_sd_price',
+        'corrector price': 'raw_py_price'
+    };
+
     for (const [name, id] of Object.entries({
         'hfo heat': 'raw_hfo_heat',
         'hfo calorific': 'raw_hfo_cal',
         'hfo sulfur': 'raw_hfo_sulfur',
         ...extraFields,
+        ...econFields,
     })) {
         const val = parseFloat(document.getElementById(id).value);
         if (isNaN(val)) {
@@ -1406,6 +1717,11 @@ async function calculateRawMixProportions() {
         document.getElementById('cl_C3A').innerText = `${ph.C3A}%`;
         document.getElementById('cl_C4AF').innerText = `${ph.C4AF}%`;
 
+        // Render Process Economics & Calorific Comparison
+        if (data.economics) {
+            renderProcessEconomics(data.economics);
+        }
+
         const adviceContainer = document.getElementById('raw_diagnostic_advice');
         const diags = data.diagnostics || [];
         adviceContainer.replaceChildren();
@@ -1450,6 +1766,20 @@ async function calculateRawMixProportions() {
             );
         }
 
+        if (rawMixMode === 'solve' && data.dry_proportions) {
+            const p = data.dry_proportions;
+            const lsEl = document.getElementById('raw_recipe_ls');
+            const shEl = document.getElementById('raw_recipe_sh');
+            const sdEl = document.getElementById('raw_recipe_sd');
+            const pyEl = document.getElementById('raw_recipe_py');
+            if (lsEl && p.Limestone != null) lsEl.value = Number(p.Limestone).toFixed(2);
+            if (shEl && p.Clay != null) shEl.value = Number(p.Clay).toFixed(2);
+            if (sdEl && p.Sand != null) sdEl.value = Number(p.Sand).toFixed(2);
+            const pyVal = p['Slag'] ?? p['Iron Ore'] ?? p[Object.keys(p)[3]];
+            if (pyEl && pyVal != null) pyEl.value = Number(pyVal).toFixed(2);
+            updateRecipeTotals();
+        }
+
         if (resultsBlock) resultsBlock.style.display = 'block';
         if (proportionsBlock) proportionsBlock.style.display = 'block';
         if (promptBlock && data.explanation) {
@@ -1466,13 +1796,84 @@ async function calculateRawMixProportions() {
         showAppNotice('The calculation failed. Check the entered values and try again.', 'error');
     }
 }
-const rawMixCorrections = {
-    OPC: { SiO2: 23.60, Al2O3: 8.25, Fe2O3: 27.69, CaO: 32.15, MgO: 5.93, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.90, H2O: 6.5 },
-    SBC: { SiO2: 23.60, Al2O3: 8.25, Fe2O3: 27.69, CaO: 32.15, MgO: 5.93, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.90, H2O: 6.5 },
-    SRC: { SiO2: 49.00, Al2O3: 0.69, Fe2O3: 37.18, CaO: 1.00, MgO: 0.90, Na2O: 0.29, K2O: 0.81, SO3: 1.50, LOI: 8.55, H2O: 7.8 }
+const rawMixPresets = {
+    OPC: {
+        material4Label: '4. Slag',
+        recipe4Label: 'Slag %',
+        isSlag: true,
+        correctorChem: { SiO2: 23.60, Al2O3: 8.25, Fe2O3: 27.69, CaO: 32.15, MgO: 5.93, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.90, H2O: 6.5 },
+        targets: { LSF: 95.0, SM: 2.35, AM: 1.40 },
+        recipe: { ls: 72.32, sh: 24.92, sd: 0.37, py: 2.39 }
+    },
+    SBC: {
+        material4Label: '4. Slag',
+        recipe4Label: 'Slag %',
+        isSlag: true,
+        correctorChem: { SiO2: 23.60, Al2O3: 8.25, Fe2O3: 27.69, CaO: 32.15, MgO: 5.93, Na2O: 0.20, K2O: 0.50, SO3: 1.50, LOI: 0.90, H2O: 6.5 },
+        targets: { LSF: 94.0, SM: 2.35, AM: 1.40 },
+        recipe: { ls: 72.06, sh: 25.16, sd: 0.37, py: 2.42 }
+    },
+    SRC: {
+        material4Label: '4. Iron Ore',
+        recipe4Label: 'Iron Ore %',
+        isSlag: false,
+        correctorChem: { SiO2: 49.00, Al2O3: 0.69, Fe2O3: 37.18, CaO: 1.00, MgO: 0.90, Na2O: 0.29, K2O: 0.81, SO3: 1.50, LOI: 8.55, H2O: 7.8 },
+        targets: { LSF: 95.0, SM: 2.25, AM: 0.80 },
+        recipe: { ls: 74.15, sh: 19.97, sd: 0.75, py: 5.13 }
+    }
 };
+
 let rawCementType = 'OPC';
 let rawMixMode = 'solve';
+
+function applyRawMixPreset(cementType, autoCalculate = true) {
+    rawCementType = cementType;
+    const preset = rawMixPresets[cementType] || rawMixPresets.OPC;
+
+    // Update UI Labels
+    const mat4Label = document.getElementById('raw_material_4_label');
+    const rec4Label = document.getElementById('raw_recipe_py_label');
+    if (mat4Label) mat4Label.innerText = preset.material4Label;
+    if (rec4Label) rec4Label.innerText = preset.recipe4Label;
+
+    // Load corrector chemistry into inputs
+    const c = preset.correctorChem;
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    };
+
+    setVal('raw_py_SiO2', c.SiO2.toFixed(2));
+    setVal('raw_py_Al2O3', c.Al2O3.toFixed(2));
+    setVal('raw_py_Fe2O3', c.Fe2O3.toFixed(2));
+    setVal('raw_py_CaO', c.CaO.toFixed(2));
+    setVal('raw_py_MgO', c.MgO.toFixed(2));
+    setVal('raw_py_Na2O', c.Na2O.toFixed(2));
+    setVal('raw_py_K2O', c.K2O.toFixed(2));
+    setVal('raw_py_SO3', c.SO3.toFixed(2));
+    setVal('raw_py_LOI', c.LOI.toFixed(2));
+    setVal('raw_py_H2O', c.H2O.toFixed(1));
+
+    // Load predefined clinker target moduli
+    const t = preset.targets;
+    setVal('raw_target_LSF', t.LSF.toFixed(1));
+    setVal('raw_target_SM', t.SM.toFixed(2));
+    setVal('raw_target_AM', t.AM.toFixed(2));
+
+    // Load predefined recipe proportions
+    const r = preset.recipe;
+    setVal('raw_recipe_ls', r.ls.toFixed(2));
+    setVal('raw_recipe_sh', r.sh.toFixed(2));
+    setVal('raw_recipe_sd', r.sd.toFixed(2));
+    setVal('raw_recipe_py', r.py.toFixed(2));
+
+    updateRawMixTotals();
+    updateRecipeTotals();
+
+    if (autoCalculate) {
+        calculateRawMixProportions();
+    }
+}
 
 // Setup and event wiring for Raw Mix tab
 function setupRawMixCalculator() {
@@ -1487,47 +1888,7 @@ function setupRawMixCalculator() {
 
     if (selectType) {
         selectType.addEventListener('change', (e) => {
-            // Save current inputs to rawMixCorrections[rawCementType]
-            rawMixCorrections[rawCementType] = {
-                SiO2: parseFloat(document.getElementById('raw_py_SiO2').value) || 0,
-                Al2O3: parseFloat(document.getElementById('raw_py_Al2O3').value) || 0,
-                Fe2O3: parseFloat(document.getElementById('raw_py_Fe2O3').value) || 0,
-                CaO: parseFloat(document.getElementById('raw_py_CaO').value) || 0,
-                MgO: parseFloat(document.getElementById('raw_py_MgO').value) || 0,
-                Na2O: parseFloat(document.getElementById('raw_py_Na2O').value) || 0,
-                K2O: parseFloat(document.getElementById('raw_py_K2O').value) || 0,
-                SO3: parseFloat(document.getElementById('raw_py_SO3').value) || 0,
-                LOI: parseFloat(document.getElementById('raw_py_LOI').value) || 0,
-                H2O: parseFloat(document.getElementById('raw_py_H2O').value) || 0
-            };
-
-            // Switch to new type
-            rawCementType = e.target.value;
-            const newChem = rawMixCorrections[rawCementType];
-            const isSlag = (rawCementType === 'OPC' || rawCementType === 'SBC');
-            const labelText = isSlag ? '4. Slag' : '4. Iron Ore';
-            const recipeLabelText = isSlag ? 'Slag %' : 'Iron Ore %';
-
-            // Update UI Labels
-            document.getElementById('raw_material_4_label').innerText = labelText;
-            document.getElementById('raw_recipe_py_label').innerText = recipeLabelText;
-
-            // Load new chemistry values into inputs
-            document.getElementById('raw_py_SiO2').value = newChem.SiO2.toFixed(2);
-            document.getElementById('raw_py_Al2O3').value = newChem.Al2O3.toFixed(2);
-            document.getElementById('raw_py_Fe2O3').value = newChem.Fe2O3.toFixed(2);
-            document.getElementById('raw_py_CaO').value = newChem.CaO.toFixed(2);
-            document.getElementById('raw_py_MgO').value = newChem.MgO.toFixed(2);
-            document.getElementById('raw_py_Na2O').value = newChem.Na2O.toFixed(2);
-            document.getElementById('raw_py_K2O').value = newChem.K2O.toFixed(2);
-            document.getElementById('raw_py_SO3').value = newChem.SO3.toFixed(2);
-            document.getElementById('raw_py_LOI').value = newChem.LOI.toFixed(2);
-            document.getElementById('raw_py_H2O').value = newChem.H2O.toFixed(1);
-
-            // Clear output
-            document.getElementById('rawmix_results_block').style.display = 'none';
-            document.getElementById('rawmix_proportions_block').style.display = 'none';
-            document.getElementById('rawmix_prompt_block').style.display = 'block';
+            applyRawMixPreset(e.target.value, true);
         });
     }
 
@@ -1539,13 +1900,10 @@ function setupRawMixCalculator() {
 
             document.getElementById('rawmix_target_moduli_block').style.display = 'block';
             document.getElementById('rawmix_recipe_input_block').style.display = 'none';
-            btnCalculate.innerText = 'Calculate proportions';
-            document.getElementById('rawmix_results_title').innerText = 'Raw-mix result';
-            
-            // Clear outputs
-            document.getElementById('rawmix_results_block').style.display = 'none';
-            document.getElementById('rawmix_proportions_block').style.display = 'none';
-            document.getElementById('rawmix_prompt_block').style.display = 'block';
+            btnCalculate.innerText = 'Calculate Proportions';
+            document.getElementById('rawmix_results_title').innerText = 'Clinker Quality & Mineral Phase Projections';
+
+            calculateRawMixProportions();
         });
 
         btnCalc.addEventListener('click', () => {
@@ -1555,20 +1913,16 @@ function setupRawMixCalculator() {
 
             document.getElementById('rawmix_target_moduli_block').style.display = 'none';
             document.getElementById('rawmix_recipe_input_block').style.display = 'block';
-            btnCalculate.innerText = 'Check recipe';
-            document.getElementById('rawmix_results_title').innerText = 'Recipe result';
-            
-            // Clear outputs
-            document.getElementById('rawmix_results_block').style.display = 'none';
-            document.getElementById('rawmix_proportions_block').style.display = 'none';
-            document.getElementById('rawmix_prompt_block').style.display = 'block';
+            btnCalculate.innerText = 'Check Recipe';
+            document.getElementById('rawmix_results_title').innerText = 'Recipe Projection Results';
+
+            calculateRawMixProportions();
         });
     }
 
     // Add Excel Paste Support for the table
     const table = document.querySelector('.rawmix-input-table');
     if (table) {
-        // Call it immediately on load
         updateRawMixTotals();
 
         table.addEventListener('input', function(e) {
@@ -1618,7 +1972,6 @@ function setupRawMixCalculator() {
                     
                     const input = td.querySelector('input');
                     if (input && !input.disabled && !input.readOnly) {
-                        // Allow floats formatted with commas (EU style)
                         const val = parseFloat(cells[j].trim().replace(',', '.'));
                         if (!isNaN(val)) {
                             input.value = val;
@@ -1626,7 +1979,6 @@ function setupRawMixCalculator() {
                     }
                 }
             }
-            // Update totals after paste is processed
             updateRawMixTotals();
         });
     }
@@ -1640,6 +1992,10 @@ function setupRawMixCalculator() {
             }
         });
     }
+
+    // Auto-solve with predefined values immediately on startup
+    const initialType = selectType ? selectType.value : 'OPC';
+    applyRawMixPreset(initialType, true);
 }
 
 // Helper to sum all oxides + LOI for each material
@@ -1884,3 +2240,490 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+
+// ==========================================
+// Period & Seasonal Averages Manager
+// ==========================================
+let _currentPeriodState = {
+    periodType: 'all',
+    season: '',
+    quarter: '',
+    months: '',
+    year: 'all',
+    activeKey: 'all'
+};
+
+function renderSummaryCards(data) {
+    if (!data) return;
+
+    // 1. Total Records
+    const totalEl = document.getElementById('totalRecords');
+    if (totalEl) totalEl.innerText = (data.totalRecords || 0).toLocaleString();
+
+    const periodSub = document.getElementById('totalRecordsPeriod');
+    if (periodSub) periodSub.textContent = data.periodLabel || 'All time';
+
+    // 2. Average 28-Day Strength
+    const s = data.avgStrength || {};
+    const strengthEl = document.getElementById('avgStrength');
+    if (strengthEl) {
+        strengthEl.innerHTML = `
+            <div style="font-size: 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem;">
+                <div><span style="color: #38bdf8; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'} <span class="unit">MPa</span></div>
+                <div><span style="color: #10b981; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'} <span class="unit">MPa</span></div>
+                <div><span style="color: #8b5cf6; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'} <span class="unit">MPa</span></div>
+                ${s.overall !== undefined && s.overall !== null ? `<div style="border-top: 1px dashed var(--panel-border); margin-top: 0.2rem; padding-top: 0.2rem; font-size: 0.8rem; color: var(--text-secondary);">Avg: <strong style="color: var(--text-primary); font-size: 0.95rem;">${s.overall}</strong> <span class="unit">MPa</span></div>` : ''}
+            </div>`;
+    }
+
+    // 3. Average C3S
+    const c = data.avgC3S || {};
+    const c3sEl = document.getElementById('avgC3S');
+    if (c3sEl) {
+        c3sEl.innerHTML = `
+            <div style="font-size: 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem;">
+                <div><span style="color: #38bdf8; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'} <span class="unit">%</span></div>
+                <div><span style="color: #10b981; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'} <span class="unit">%</span></div>
+                <div><span style="color: #8b5cf6; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'} <span class="unit">%</span></div>
+                ${c.overall !== undefined && c.overall !== null ? `<div style="border-top: 1px dashed var(--panel-border); margin-top: 0.2rem; padding-top: 0.2rem; font-size: 0.8rem; color: var(--text-secondary);">Avg: <strong style="color: var(--text-primary); font-size: 0.95rem;">${c.overall}</strong> <span class="unit">%</span></div>` : ''}
+            </div>`;
+    }
+
+    // 4. Coverage Period
+    const covEl = document.getElementById('yearsCoverage');
+    if (covEl) covEl.innerText = data.yearsCoverage || '--';
+
+    const covSub = document.getElementById('coveragePeriodSub');
+    if (covSub) covSub.textContent = data.periodLabel || 'Laboratory historical record';
+
+    // 5. Active Badges
+    const badge = document.getElementById('activePeriodBadge');
+    if (badge) badge.textContent = data.periodLabel || 'Full Dataset (All Time)';
+
+    const yrBadge = document.getElementById('seasonsCardsYearBadge');
+    if (yrBadge) {
+        yrBadge.textContent = data.year && data.year !== 'all' ? `(Year ${data.year})` : '(All Years)';
+    }
+
+    const tblYrBadge = document.getElementById('seasonsTableYearBadge');
+    if (tblYrBadge) {
+        tblYrBadge.textContent = data.year && data.year !== 'all' ? `(Year ${data.year})` : '(All Years)';
+    }
+
+    // Sync button highlight states
+    document.querySelectorAll('.quick-period-btn').forEach(btn => {
+        const p = btn.getAttribute('data-period');
+        if (p === _currentPeriodState.activeKey) {
+            btn.classList.add('is-active');
+        } else {
+            btn.classList.remove('is-active');
+        }
+    });
+
+    // 6. Render the 4 Seasonal Cards & Detailed Table
+    renderSeasonalBenchmarkCards(data);
+    renderSeasonalTable(data);
+}
+
+function renderSeasonalBenchmarkCards(data) {
+    const container = document.getElementById('seasonalBenchmarkCards');
+    if (!container) return;
+
+    const breakdown = data.seasonalBreakdown || [];
+    if (!breakdown.length) {
+        container.innerHTML = '<div style="grid-column: 1 / -1; padding: 1rem; text-align: center; color: var(--text-secondary);">No seasonal data available</div>';
+        return;
+    }
+
+    container.innerHTML = breakdown.map(item => {
+        const isCurrent = _currentPeriodState.activeKey === ('season_' + item.key);
+        const s = item.avgStrength || {};
+        const c = item.avgC3S || {};
+        const cardBorder = isCurrent ? 'var(--accent-strong)' : 'var(--panel-border)';
+        const cardBg = isCurrent ? 'var(--accent-subtle)' : 'var(--panel-bg)';
+        const cardShadow = isCurrent ? '0 0 12px rgba(72, 169, 148, 0.25)' : 'none';
+
+        return `
+            <div class="card seasonal-card-interactive" data-season="${escapeHtml(item.key)}" 
+                 style="background: ${cardBg} !important; border: 1px solid ${cardBorder}; border-radius: var(--radius-panel); padding: 0.75rem 0.85rem; cursor: pointer; transition: all 180ms ease; box-shadow: ${cardShadow};"
+                 title="Click to filter summary cards for ${escapeHtml(item.name)}">
+                
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.35rem;">
+                    <div style="font-weight: 700; font-size: 0.85rem; color: ${isCurrent ? 'var(--accent-strong)' : 'var(--text-primary)'}; display: flex; align-items: center; gap: 0.3rem;">
+                        <span>${escapeHtml(item.icon)}</span>
+                        <span>${escapeHtml(item.name)}</span>
+                    </div>
+                    <span style="font-size: 0.7rem; color: var(--text-secondary);">${escapeHtml(item.label)}</span>
+                </div>
+
+                <!-- 28-Day Strength Metric -->
+                <div style="margin-bottom: 0.45rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                        <span style="font-size: 0.68rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">28D Strength</span>
+                        <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${s.overall !== null && s.overall !== undefined ? s.overall : '--'} <span class="unit" style="font-size: 0.7rem;">MPa</span></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-family: var(--font-mono); margin-top: 0.15rem; color: var(--text-muted);">
+                        <span>OPC: <strong style="color: #38bdf8;">${s.OPC ?? '--'}</strong></span>
+                        <span>SRC: <strong style="color: #10b981;">${s.SRC ?? '--'}</strong></span>
+                        <span>SBC: <strong style="color: #8b5cf6;">${s.SBC ?? '--'}</strong></span>
+                    </div>
+                </div>
+
+                <!-- C3S Metric -->
+                <div style="margin-bottom: 0.45rem; border-top: 1px dashed var(--panel-border); padding-top: 0.35rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                        <span style="font-size: 0.68rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">C₃S Content</span>
+                        <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${c.overall !== null && c.overall !== undefined ? c.overall : '--'} <span class="unit" style="font-size: 0.7rem;">%</span></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-family: var(--font-mono); margin-top: 0.15rem; color: var(--text-muted);">
+                        <span>OPC: <strong style="color: #38bdf8;">${c.OPC ?? '--'}</strong></span>
+                        <span>SRC: <strong style="color: #10b981;">${c.SRC ?? '--'}</strong></span>
+                        <span>SBC: <strong style="color: #8b5cf6;">${c.SBC ?? '--'}</strong></span>
+                    </div>
+                </div>
+
+                <!-- Records count footer -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: var(--text-secondary); border-top: 1px solid var(--panel-border); padding-top: 0.3rem;">
+                    <span>${item.totalRecords.toLocaleString()} tests</span>
+                    <span style="color: ${isCurrent ? 'var(--accent-strong)' : 'var(--text-muted)'}; font-weight: ${isCurrent ? '700' : 'normal'};">
+                        ${isCurrent ? '● Active' : 'Select →'}
+                    </span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Attach click handlers to the seasonal benchmark cards
+    container.querySelectorAll('.seasonal-card-interactive').forEach(card => {
+        card.addEventListener('click', () => {
+            const seasonKey = card.getAttribute('data-season');
+            setActivePeriod('season_' + seasonKey);
+        });
+    });
+}
+
+function renderSeasonalTable(data) {
+    const tbody = document.getElementById('seasonalComparisonBody');
+    if (!tbody) return;
+
+    const breakdown = data.seasonalBreakdown || [];
+    if (!breakdown.length) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 1rem; color: var(--text-secondary);">No seasonal data available</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = breakdown.map(item => {
+        const isCurrent = _currentPeriodState.activeKey === ('season_' + item.key);
+        const s = item.avgStrength || {};
+        const c = item.avgC3S || {};
+        const rowStyle = isCurrent 
+            ? 'background: var(--panel-header); font-weight: 600; cursor: pointer;' 
+            : 'cursor: pointer; transition: background 120ms ease;';
+        return `
+            <tr class="season-row" data-season="${escapeHtml(item.key)}" style="${rowStyle}" title="Click to filter dashboard by ${escapeHtml(item.name)}">
+                <td style="padding: 0.45rem 0.6rem;">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</td>
+                <td style="padding: 0.45rem 0.6rem; color: var(--text-secondary);">${escapeHtml(item.label)}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono);">${item.totalRecords.toLocaleString()}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: #38bdf8;">${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #10b981;">${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #8b5cf6;">${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); font-weight: 650; color: var(--text-primary);">${s.overall !== null && s.overall !== undefined ? s.overall : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: #38bdf8;">${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #10b981;">${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #8b5cf6;">${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); font-weight: 650; color: var(--text-primary);">${c.overall !== null && c.overall !== undefined ? c.overall : '--'}</td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.querySelectorAll('.season-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const seasonKey = row.getAttribute('data-season');
+            setActivePeriod('season_' + seasonKey);
+        });
+    });
+}
+
+let _averagesControlsInitialized = false;
+
+function setupPeriodAveragesControls(initialAverages) {
+    if (_averagesControlsInitialized) return;
+    _averagesControlsInitialized = true;
+
+    // Populate Year selector
+    const yearSelect = document.getElementById('avgYearSelect');
+    if (yearSelect && initialAverages && Array.isArray(initialAverages.availableYears)) {
+        yearSelect.innerHTML = '<option value="all">All Years</option>' + 
+            initialAverages.availableYears.map(y => `<option value="${y}">${y}</option>`).join('');
+    }
+
+    // Quick Season / Period Buttons
+    document.querySelectorAll('.quick-period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const periodKey = btn.getAttribute('data-period');
+            const select3m = document.getElementById('avg3mSelect');
+            if (select3m) select3m.value = '';
+            setActivePeriod(periodKey);
+        });
+    });
+
+    // 3 Months Dropdown
+    const select3m = document.getElementById('avg3mSelect');
+    if (select3m) {
+        select3m.addEventListener('change', () => {
+            const val = select3m.value;
+            if (val) {
+                setActivePeriod(val);
+            } else {
+                setActivePeriod('all');
+            }
+        });
+    }
+
+    // Year Dropdown
+    if (yearSelect) {
+        yearSelect.addEventListener('change', () => {
+            _currentPeriodState.year = yearSelect.value;
+            loadPeriodAverages();
+        });
+    }
+
+    // Reset Button
+    const resetBtn = document.getElementById('btnResetAvgPeriod');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            if (yearSelect) yearSelect.value = 'all';
+            if (select3m) select3m.value = '';
+            _currentPeriodState.year = 'all';
+            setActivePeriod('all');
+        });
+    }
+
+    // Toggle Detailed Table Drawer
+    const toggleBtn = document.getElementById('btnToggleSeasonsTable');
+    const drawer = document.getElementById('seasonalComparisonDrawer');
+    if (toggleBtn && drawer) {
+        toggleBtn.addEventListener('click', () => {
+            const isHidden = drawer.style.display === 'none' || !drawer.style.display;
+            drawer.style.display = isHidden ? 'block' : 'none';
+            toggleBtn.textContent = isHidden ? '✕ Hide Detailed Table' : '📊 Detailed Table';
+        });
+    }
+}
+
+function setActivePeriod(periodKey) {
+    _currentPeriodState.activeKey = periodKey;
+
+    if (periodKey === 'all') {
+        _currentPeriodState.periodType = 'all';
+        _currentPeriodState.season = '';
+        _currentPeriodState.quarter = '';
+        _currentPeriodState.months = '';
+    } else if (periodKey.startsWith('season_')) {
+        _currentPeriodState.periodType = 'season';
+        _currentPeriodState.season = periodKey.replace('season_', '');
+        _currentPeriodState.quarter = '';
+        _currentPeriodState.months = '';
+    } else if (periodKey.startsWith('quarter_')) {
+        _currentPeriodState.periodType = 'quarter';
+        _currentPeriodState.quarter = periodKey.replace('quarter_', '');
+        _currentPeriodState.season = '';
+        _currentPeriodState.months = '';
+    } else if (periodKey.startsWith('months_')) {
+        _currentPeriodState.periodType = 'months';
+        _currentPeriodState.months = periodKey.replace('months_', '');
+        _currentPeriodState.season = '';
+        _currentPeriodState.quarter = '';
+    }
+
+    loadPeriodAverages();
+}
+
+async function loadPeriodAverages() {
+    const yearSelect = document.getElementById('avgYearSelect');
+    const badge = document.getElementById('activePeriodBadge');
+
+    const yearVal = yearSelect ? yearSelect.value : _currentPeriodState.year || 'all';
+
+    const params = new URLSearchParams({
+        period_type: _currentPeriodState.periodType,
+        year: yearVal
+    });
+
+    if (_currentPeriodState.season) params.set('season', _currentPeriodState.season);
+    if (_currentPeriodState.quarter) params.set('quarter', _currentPeriodState.quarter);
+    if (_currentPeriodState.months) params.set('months', _currentPeriodState.months);
+
+    if (badge) badge.textContent = 'Updating...';
+
+    try {
+        const resp = await fetch(`/api/averages?${params.toString()}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        renderSummaryCards(data);
+    } catch (err) {
+        console.error('Failed to load period averages:', err);
+        if (badge) badge.textContent = 'Error updating averages';
+    }
+}
+
+function renderProcessEconomics(econ) {
+    if (!econ) return;
+    const cur = econ.currency || '$';
+    const fuel = econ.fuel || {};
+    const raw = econ.raw_materials || {};
+    const baseline = econ.provider_baseline || {};
+
+    // Update currency labels throughout DOM
+    document.querySelectorAll('.currency-label').forEach(el => el.textContent = cur);
+    for (let i = 1; i <= 7; i++) {
+        const symEl = document.getElementById(`econ_currency_sym${i}`);
+        if (symEl) symEl.textContent = cur;
+    }
+
+    // Top KPIs
+    const elTot = document.getElementById('econ_total_clinker_cost');
+    if (elTot) elTot.textContent = Number(econ.total_direct_cost_per_t_clinker || 0).toFixed(2);
+
+    const elDayTot = document.getElementById('econ_daily_total_cost');
+    if (elDayTot) elDayTot.textContent = Number(econ.daily_total_direct_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+    const elMatCl = document.getElementById('econ_mat_clinker_cost');
+    if (elMatCl) elMatCl.textContent = Number(raw.cost_per_t_clinker || 0).toFixed(2);
+
+    const elMeal = document.getElementById('econ_meal_cost');
+    if (elMeal) elMeal.textContent = Number(raw.cost_per_t_rawmeal || 0).toFixed(2);
+
+    const elFactor = document.getElementById('econ_meal_factor');
+    if (elFactor) elFactor.textContent = Number(raw.meal_to_clinker_factor || 1.532).toFixed(3);
+
+    const elFuelCost = document.getElementById('econ_fuel_cost');
+    if (elFuelCost) elFuelCost.textContent = Number(fuel.cost_per_t_clinker || 0).toFixed(2);
+
+    const elSfc = document.getElementById('econ_sfc_actual');
+    if (elSfc) elSfc.textContent = Number(fuel.sfc_actual_kg_t || 0).toFixed(2);
+
+    const elGcal = document.getElementById('econ_cost_gcal');
+    if (elGcal) elGcal.textContent = Number(fuel.cost_per_gcal || 0).toFixed(2);
+
+    const elGj = document.getElementById('econ_cost_gj');
+    if (elGj) elGj.textContent = Number(fuel.cost_per_gj || 0).toFixed(2);
+
+    // Badge & Calorific Comparison Alert Box
+    const badge = document.getElementById('econ_status_badge');
+    const alertBox = document.getElementById('econ_calorific_alert_box');
+
+    const actualCal = Number(fuel.actual_calorific || 9800);
+    const stdCal = Number(baseline.standard_calorific || 9800);
+    const varKg = Number(fuel.sfc_var_kg_t || 0);
+    const varPct = Number(fuel.sfc_var_pct || 0);
+    const varCostCl = Number(fuel.cost_var_per_t_clinker || 0);
+    const dailyVarCost = Number(fuel.daily_cost_var || 0);
+    const dailyVarFuel = Number(fuel.daily_fuel_var_t || 0);
+    const annualVarCost = Number(fuel.annual_cost_var || 0);
+
+    if (fuel.status === 'penalty') {
+        if (badge) {
+            badge.style.background = 'rgba(239, 68, 68, 0.15)';
+            badge.style.color = '#ef4444';
+            badge.style.borderColor = '#ef4444';
+            badge.textContent = `Calorific Deficit (-${fuel.calorific_deficit} kcal/kg)`;
+        }
+        if (alertBox) {
+            alertBox.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+            alertBox.style.background = 'rgba(239, 68, 68, 0.06)';
+            alertBox.innerHTML = `
+                <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+                    <div style="font-size:1.4rem; line-height:1;">⚠️</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:700; color:#ef4444; font-size:0.85rem; margin-bottom:0.25rem;">
+                            Fuel Quality Penalty Alert: Delivered HFO (${actualCal.toLocaleString()} kcal/kg) is below Sinoma Design Standard (${stdCal.toLocaleString()} kcal/kg)
+                        </div>
+                        <div style="font-size:0.78rem; line-height:1.45; color:var(--text-primary);">
+                            Because the calorific value is low, the kiln must burn 
+                            <strong style="color:#ef4444; font-family:var(--font-mono);">${fuel.sfc_actual_kg_t.toFixed(2)} kg/t</strong> 
+                            instead of the standard <strong style="font-family:var(--font-mono);">${fuel.sfc_std_kg_t.toFixed(2)} kg/t</strong> 
+                            (an excess of <strong style="color:#ef4444; font-family:var(--font-mono);">+${varKg.toFixed(2)} kg fuel/ton clinker</strong> or 
+                            <strong style="color:#ef4444; font-family:var(--font-mono);">+${varPct.toFixed(1)}%</strong>).
+                        </div>
+                        <div style="margin-top:0.4rem; display:flex; flex-wrap:wrap; gap:0.75rem; font-size:0.78rem; font-family:var(--font-mono);">
+                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
+                                Clinker Cost Penalty: <strong>+${cur}${varCostCl.toFixed(2)} / ton</strong>
+                            </span>
+                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
+                                Extra Fuel Burned: <strong>+${dailyVarFuel.toFixed(1)} tons / day</strong>
+                            </span>
+                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
+                                Daily Financial Loss: <strong>+${cur}${Math.abs(dailyVarCost).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} / day</strong>
+                            </span>
+                            <span style="background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:3px; color:#ef4444;">
+                                Annual Impact (310 d): <strong>+${cur}${Math.abs(annualVarCost).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} / yr</strong>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } else if (fuel.status === 'optimal') {
+        if (badge) {
+            badge.style.background = 'rgba(16, 185, 129, 0.15)';
+            badge.style.color = '#10b981';
+            badge.style.borderColor = '#10b981';
+            badge.textContent = `Superior Calorific (+${Math.abs(fuel.calorific_deficit)} kcal/kg)`;
+        }
+        if (alertBox) {
+            alertBox.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            alertBox.style.background = 'rgba(16, 185, 129, 0.06)';
+            alertBox.innerHTML = `
+                <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+                    <div style="font-size:1.4rem; line-height:1;">✨</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:700; color:#10b981; font-size:0.85rem; margin-bottom:0.25rem;">
+                            High Efficiency Fuel: Delivered HFO (${actualCal.toLocaleString()} kcal/kg) exceeds Sinoma Standard (${stdCal.toLocaleString()} kcal/kg)
+                        </div>
+                        <div style="font-size:0.78rem; line-height:1.45; color:var(--text-primary);">
+                            Specific fuel consumption decreases to <strong style="color:#10b981; font-family:var(--font-mono);">${fuel.sfc_actual_kg_t.toFixed(2)} kg/t</strong> 
+                            (saving <strong style="color:#10b981; font-family:var(--font-mono);">${Math.abs(varKg).toFixed(2)} kg fuel/ton</strong> or 
+                            <strong style="color:#10b981; font-family:var(--font-mono);">${Math.abs(varPct).toFixed(1)}%</strong>), saving 
+                            <strong style="color:#10b981; font-family:var(--font-mono);">${cur}${Math.abs(dailyVarCost).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} / day</strong>.
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } else {
+        if (badge) {
+            badge.style.background = 'rgba(var(--accent-rgb, 72, 169, 148), 0.15)';
+            badge.style.color = 'var(--accent)';
+            badge.style.borderColor = 'var(--accent)';
+            badge.textContent = 'Standard Baseline';
+        }
+        if (alertBox) {
+            alertBox.style.borderColor = 'var(--panel-border)';
+            alertBox.style.background = 'var(--panel-muted)';
+            alertBox.innerHTML = `
+                <div style="display:flex; align-items:center; gap:0.6rem; font-size:0.78rem;">
+                    <span style="font-size:1.1rem;">✅</span>
+                    <span>Delivered fuel calorific value matches <strong>Sinoma Sulaymaniyah Project Standard (${stdCal.toLocaleString()} kcal/kg)</strong>. Specific consumption is nominal at <strong>${fuel.sfc_actual_kg_t.toFixed(2)} kg HFO / ton clinker</strong> (${fuel.actual_heat} kcal/kg clinker).</span>
+                </div>
+            `;
+        }
+    }
+
+    // Material Breakdown List
+    const breakdownList = document.getElementById('econ_mat_breakdown_list');
+    if (breakdownList && raw.breakdown_per_t_clinker) {
+        breakdownList.replaceChildren();
+        Object.entries(raw.breakdown_per_t_clinker).forEach(([mat, cost]) => {
+            const unitPrice = raw.prices ? raw.prices[mat] : 0;
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0.4rem; background:var(--panel-muted); border-radius:2px;';
+            row.innerHTML = `
+                <span style="color:var(--text-secondary);">${mat} (@ ${cur}${Number(unitPrice).toFixed(2)}/t):</span>
+                <strong style="font-family:var(--font-mono);">${cur}${Number(cost).toFixed(2)} / ton cl</strong>
+            `;
+            breakdownList.appendChild(row);
+        });
+    }
+}
