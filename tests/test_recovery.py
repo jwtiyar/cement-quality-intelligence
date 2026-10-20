@@ -5,6 +5,7 @@ import hashlib
 import os
 import shutil
 import time
+import threading
 import pandas as pd
 import pytest
 from fastapi import FastAPI
@@ -72,6 +73,55 @@ class TestCrashRecovery:
 
 
 class TestTransactionalRefreshAndTimeout:
+    @pytest.mark.parametrize("slow_step", ["cache", "index"])
+    def test_timeout_during_cache_or_index_build_preserves_all_active_files(self, tmp_path, monkeypatch, slow_step):
+        active_csv = tmp_path / "ALL_CEMENT_DATA.csv"
+        shutil.copyfile(SYNTHETIC_CSV_PATH, active_csv)
+        monkeypatch.setenv("CEMENT_DATA_CSV", str(active_csv))
+        state.reload_from_csv(str(active_csv))
+        rebuild_index()
+        paths = [active_csv, tmp_path / "knowledge_base/latest_daily_results.txt", tmp_path / "knowledge_base/rag_index.pkl"]
+        original = {path: path.read_bytes() for path in paths}
+        version = state.get_snapshot().dataset_version
+        finished = threading.Event()
+
+        def stage(staging_csv, *_):
+            candidate = pd.read_csv(SYNTHETIC_CSV_PATH).head(10)
+            candidate.to_csv(staging_csv, index=False)
+            return load_and_prepare(staging_csv), {}, {}
+
+        import rag_index
+        owner, name = (state, "_build_cache_and_snapshot") if slow_step == "cache" else (rag_index, "rebuild_index")
+        original_build = getattr(owner, name)
+
+        def slow_build(*args, **kwargs):
+            try:
+                time.sleep(0.7)
+                return original_build(*args, **kwargs)
+            finally:
+                finished.set()
+
+        monkeypatch.setattr(state, "_stage_refresh_sync", stage)
+        monkeypatch.setattr(owner, name, slow_build)
+
+        async def exercise():
+            started = time.monotonic()
+            with pytest.raises(TimeoutError):
+                async with asyncio.timeout(0.4):
+                    await state.refresh_dataset_transactional()
+            assert time.monotonic() - started < 0.6
+            assert state.get_snapshot().dataset_version == version
+            assert {path: path.read_bytes() for path in paths} == original
+            for _ in range(200):
+                if finished.is_set() and not list(tmp_path.rglob("*.staging.*")):
+                    break
+                await asyncio.sleep(0.01)
+            assert finished.is_set()
+            assert not list(tmp_path.rglob("*.staging.*"))
+            assert {path: path.read_bytes() for path in paths} == original
+
+        asyncio.run(exercise())
+
     def test_successful_refresh_publishes_the_committed_csv_version(self, tmp_path, monkeypatch):
         active_csv = str(tmp_path / "ALL_CEMENT_DATA.csv")
         shutil.copyfile(SYNTHETIC_CSV_PATH, active_csv)
@@ -151,12 +201,14 @@ class TestTransactionalRefreshAndTimeout:
         original_index = index_path.read_bytes()
 
         async def _run():
-            # Mock rebuild_index to fail AFTER os.replace has occurred
-            def broken_rebuild():
-                index_path.write_bytes(b"incomplete candidate index")
-                raise RuntimeError("Simulated RAG rebuild catastrophic failure")
+            real_replace = os.replace
 
-            monkeypatch.setattr("rag_index.rebuild_index", broken_rebuild)
+            def broken_publish(source, destination):
+                if str(destination) == "knowledge_base/rag_index.pkl" and ".staging." in str(source):
+                    raise RuntimeError("Simulated RAG publication failure")
+                return real_replace(source, destination)
+
+            monkeypatch.setattr(os, "replace", broken_publish)
 
             # Staging worker produces a distinct 10-row dataset
             def custom_staging(staging_csv, allow_deletions, active_path):
@@ -167,7 +219,7 @@ class TestTransactionalRefreshAndTimeout:
 
             monkeypatch.setattr(state, "_stage_refresh_sync", custom_staging)
 
-            with pytest.raises(RuntimeError, match="Simulated RAG rebuild"):
+            with pytest.raises(RuntimeError, match="Simulated RAG publication"):
                 await asyncio.wait_for(state.refresh_dataset_transactional(), timeout=5)
 
             # Verify active_csv was rolled back to original 360 rows from .bak

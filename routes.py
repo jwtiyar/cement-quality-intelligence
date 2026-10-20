@@ -146,7 +146,7 @@ async def chemistry_analyze(body: ChemistryAnalyzeRequest):
             K2O=body.K2O,
             SO3=body.SO3,
         )
-        result = analyze_clinker(ox)
+        result = analyze_clinker(ox, cement=body.material_type == "cement")
         lsf_pct = result["moduli"]["LSF"]
         return {
             **result,

@@ -163,6 +163,69 @@ try {
     { timeout: 30_000 },
   );
 
+  for (const delayedEndpoint of ["chemistry/analyze", "predict"]) {
+    let releaseOld;
+    const oldHeld = new Promise(resolve => { releaseOld = resolve; });
+    let oldArrived;
+    const arrived = new Promise(resolve => { oldArrived = resolve; });
+    let oldCompleted;
+    const completed = new Promise(resolve => { oldCompleted = resolve; });
+    const pattern = `**/api/${delayedEndpoint}`;
+    await page.route(pattern, async route => {
+      const body = route.request().postDataJSON();
+      const response = await route.fetch();
+      if (body.CaO === 60) {
+        oldArrived();
+        await oldHeld;
+      }
+      await route.fulfill({ response });
+      if (body.CaO === 60) oldCompleted();
+    });
+    await page.fill("#opt_CaO", "60");
+    await arrived;
+    const newPrediction = page.waitForResponse(response => response.url().endsWith('/api/predict') && response.request().postDataJSON().CaO === 65.5);
+    await page.fill("#opt_CaO", "65.5");
+    await newPrediction;
+    await page.waitForFunction(() => latestPredictionContext !== null);
+    const latest = await page.evaluate(() => JSON.stringify({
+      context: latestPredictionContext,
+      lsf: document.getElementById("opt_res_LSF").textContent,
+      model: document.getElementById("opt_res_model_strength").textContent,
+    }));
+    releaseOld();
+    await completed;
+    await page.waitForTimeout(300);
+    const afterOld = await page.evaluate(() => JSON.stringify({
+      context: latestPredictionContext,
+      lsf: document.getElementById("opt_res_LSF").textContent,
+      model: document.getElementById("opt_res_model_strength").textContent,
+    }));
+    if (latest !== afterOld) throw new Error(`Stale ${delayedEndpoint} response replaced the latest estimate`);
+    await page.unroute(pattern);
+  }
+  await page.fill("#opt_CaO", "");
+  if (await page.evaluate(() => latestPredictionContext !== null)) throw new Error("Incomplete inputs retained assistant prediction context");
+  await page.fill("#opt_CaO", "65.5");
+  await page.waitForFunction(() => latestPredictionContext !== null);
+  const chemistry = await page.request.post(`${BASE}/api/chemistry/analyze`, { data: {
+    material_type: "cement", CaO: 65.5, SiO2: 21.5, Al2O3: 5.5, Fe2O3: 3.5, MgO: 1.5, SO3: 0.8,
+  } });
+  if (await page.textContent("#opt_res_LSF") !== (await chemistry.json()).moduli.LSF.toFixed(2)) {
+    throw new Error("Strength screen did not request cement chemistry");
+  }
+  const errorsBeforeFailure = errors.length;
+  await page.route("**/api/predict", route => route.fulfill({ status: 503, body: "Unavailable" }));
+  await page.fill("#opt_CaO", "64");
+  await page.waitForFunction(() => document.getElementById("opt_res_model_strength").textContent === "Could not calculate");
+  if (await page.evaluate(() => latestPredictionContext !== null)) throw new Error("Failed prediction retained assistant context");
+  const failureErrors = errors.splice(errorsBeforeFailure);
+  errors.push(...failureErrors.filter(error => !error.includes("503") ||
+    (!error.includes("Strength prediction failed") && !error.includes("Failed to load resource"))));
+  await page.unroute("**/api/predict");
+  await page.fill("#opt_CaO", "65.5");
+  await page.waitForFunction(() => latestPredictionContext !== null);
+  await page.screenshot({ path: process.env.CEMENT_SMOKE_SCREENSHOT || "/tmp/cement-strength-regression.png", fullPage: true });
+
   await page.click("#tabBtnRawMix");
   if (new URL(page.url()).hash !== "#rawmix" || await page.getAttribute("#tabBtnRawMix", "aria-selected") !== "true") {
     throw new Error("Raw-mix tab did not update URL and selected state");
@@ -241,6 +304,7 @@ try {
   await mobile.goto(`${BASE}/#analytics`, { waitUntil: "load" });
   await mobile.click("#tabBtnAI");
   if (!await mobile.isVisible("#modelPredictionResult")) throw new Error("Model estimate is not visible on mobile");
+  await mobile.screenshot({ path: "/tmp/cement-strength-mobile.png", fullPage: true });
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 1) throw new Error(`Mobile page overflows horizontally by ${overflow}px`);
   await mobile.click("#tabBtnRawMix");

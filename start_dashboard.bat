@@ -5,7 +5,7 @@ echo ========================================================
 cd /d "%~dp0"
 
 REM 1. Set up and activate Virtual Environment
-if not exist venv (\
+if not exist venv (
     echo [INFO] Virtual environment 'venv' not found. Creating a new one...
     python -m venv venv
     if %errorlevel% neq 0 (

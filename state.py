@@ -195,10 +195,9 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
     return "\n".join(lines)
 
 
-def write_dataset_summary_to_file(df: pd.DataFrame) -> None:
+def write_dataset_summary_to_file(df: pd.DataFrame, summary_path: str = "knowledge_base/latest_daily_results.txt") -> None:
     """Generate and write a clean text summary of laboratory results into knowledge_base."""
-    os.makedirs("knowledge_base", exist_ok=True)
-    summary_path = os.path.join("knowledge_base", "latest_daily_results.txt")
+    os.makedirs(os.path.dirname(summary_path), exist_ok=True)
     summary_text = get_live_dataset_summary(df)
     tmp_path = summary_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
@@ -430,9 +429,8 @@ async def refresh_dataset_transactional(
 ) -> AppStateSnapshot:
     """
     Transactional refresh:
-    Worker thread extracts and trains purely in staging.
-    On the request side, verify deadline/cancellation, preserve recoverable .bak,
-    atomically swap files and snapshot, and rebuild RAG index from latest_daily_results.txt.
+    Worker prepares data, models, cache, assistant files, and backups in staging.
+    The request publishes prepared files and the snapshot after cancellation checks.
     If any step fails, disk rolls back to .bak and previous snapshot is preserved.
     """
     global _current_snapshot, data_cache, xgb_models, df_global
@@ -443,81 +441,90 @@ async def refresh_dataset_transactional(
     refresh_token = hashlib.sha256(f"{datetime.now(timezone.utc).isoformat()}:{os.getpid()}".encode()).hexdigest()[:8]
     staging_csv = f"{active_csv}.staging.{refresh_token}"
     bak_csv = active_csv + ".bak"
+    summary_path = "knowledge_base/latest_daily_results.txt"
+    staged_summary = f"{summary_path}.staging.{refresh_token}"
+    staged_index = f"{rag_index.INDEX_PATH}.staging.{refresh_token}"
+    staged_backup = f"{active_csv}.staging.{refresh_token}.backup"
 
     async with _refresh_lock:
         committed = False
         abandoned = threading.Event()
+        stage_finished = threading.Event()
         auxiliary_backups: dict[str, str | None] = {}
         stage_task: asyncio.Task | None = None
 
+        def cleanup_staging():
+            for path in (staging_csv, staged_summary, staged_summary + ".tmp", staged_index, staged_index + ".tmp", staged_backup):
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
+
         def stage():
             try:
-                return _stage_refresh_sync(staging_csv, allow_deletions, active_csv)
+                df_new, models_new, ml_data_new = _stage_refresh_sync(staging_csv, allow_deletions, active_csv)
+                candidate = _build_cache_and_snapshot(
+                    df=df_new,
+                    csv_path=staging_csv,
+                    models=models_new,
+                    ml_data=ml_data_new,
+                    refresh_meta={
+                        "status": "success",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "error": None,
+                        "records": len(df_new),
+                    },
+                )
+                write_dataset_summary_to_file(df_new, staged_summary)
+                rag_index.rebuild_index(output_path=staged_index, summary_path=staged_summary)
+                for path in (summary_path, rag_index.INDEX_PATH):
+                    backup = f"{path}.refresh.{refresh_token}.bak" if os.path.isfile(path) else None
+                    auxiliary_backups[path] = backup
+                    if backup:
+                        shutil.copyfile(path, backup)
+                if os.path.exists(active_csv):
+                    shutil.copyfile(active_csv, staged_backup)
+                return candidate
             finally:
-                if abandoned.is_set() and os.path.exists(staging_csv):
-                    os.remove(staging_csv)
+                stage_finished.set()
+                if abandoned.is_set():
+                    cleanup_staging()
+                    for backup in auxiliary_backups.values():
+                        if backup:
+                            try:
+                                os.remove(backup)
+                            except FileNotFoundError:
+                                pass
 
         try:
-            # 1. Staging extraction and training on background worker thread
             stage_task = asyncio.create_task(anyio.to_thread.run_sync(stage, abandon_on_cancel=True))
             # This host can miss a worker-thread wakeup; the bounded wait keeps refresh responsive.
             while not stage_task.done():
                 await asyncio.wait({stage_task}, timeout=0.25)
-            df_new, models_new, ml_data_new = stage_task.result()
+            candidate_snapshot = stage_task.result()
+            await asyncio.sleep(0)
 
-            # 2. Check for caller timeout/cancellation before commit
             if cancellation_check and cancellation_check():
-                if os.path.exists(staging_csv):
-                    try:
-                        os.remove(staging_csv)
-                    except Exception:
-                        pass
                 raise asyncio.CancelledError("Refresh operation timed out before commit step.")
 
-            # 3. Pre-build candidate snapshot in memory before touching disk
-            refresh_meta = {
-                "status": "success",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "error": None,
-                "records": len(df_new),
-            }
-            candidate_snapshot = _build_cache_and_snapshot(
-                df=df_new,
-                csv_path=staging_csv,
-                models=models_new,
-                ml_data=ml_data_new,
-                refresh_meta=refresh_meta,
-            )
+            if os.path.exists(staged_backup):
+                os.replace(staged_backup, bak_csv)
 
-            # Keep the assistant's published files paired with the active CSV.
-            for path in ("knowledge_base/latest_daily_results.txt", rag_index.INDEX_PATH):
-                backup = f"{path}.refresh.{refresh_token}.bak" if os.path.isfile(path) else None
-                if backup:
-                    shutil.copyfile(path, backup)
-                auxiliary_backups[path] = backup
-
-            # 4. Safe backup preservation
-            if os.path.exists(active_csv):
-                shutil.copyfile(active_csv, bak_csv)
-
-            # 5. Atomic file replacement
             os.replace(staging_csv, active_csv)
             committed = True
 
-            # 6. Synchronize text summary and RAG index from latest_daily_results.txt
-            write_dataset_summary_to_file(df_new)
-            rag_index.rebuild_index()
+            os.replace(staged_summary, summary_path)
+            os.replace(staged_index, rag_index.INDEX_PATH)
 
-            # 7. Atomic in-memory snapshot publication
             _current_snapshot = candidate_snapshot
             df_global = candidate_snapshot.df
             xgb_models = candidate_snapshot.xgb_models
             data_cache = candidate_snapshot.data_cache
 
-            print(f"Refresh completed successfully: {len(df_new)} records, version {candidate_snapshot.dataset_version}")
+            print(f"Refresh completed successfully: {len(candidate_snapshot.df)} records, version {candidate_snapshot.dataset_version}")
             return candidate_snapshot
 
-        except (Exception, asyncio.CancelledError, BaseException) as e:
+        except BaseException as e:
             abandoned.set()
             if stage_task is not None and not stage_task.done():
                 stage_task.cancel()
@@ -540,11 +547,8 @@ async def refresh_dataset_transactional(
                         print(f"CRITICAL: Failed to roll back {path}: {rb_err}")
 
             # Clean up temporary staging file on failure
-            if os.path.exists(staging_csv):
-                try:
-                    os.remove(staging_csv)
-                except Exception:
-                    pass
+            if stage_finished.is_set():
+                cleanup_staging()
 
             # Record failure status in existing snapshot metadata without losing active state
             if _current_snapshot is not None:
@@ -564,7 +568,7 @@ async def refresh_dataset_transactional(
                 data_cache = _current_snapshot.data_cache
             raise
         finally:
-            for backup in auxiliary_backups.values():
+            for backup in list(auxiliary_backups.values()) if stage_finished.is_set() else []:
                 if backup and os.path.exists(backup):
                     try:
                         os.remove(backup)

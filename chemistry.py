@@ -84,9 +84,9 @@ def clinker_lsf_percent(cao: float, sio2: float, al2o3: float, fe2o3: float) -> 
     return 100.0 * cao / denom
 
 
-def analyze_clinker(ox: OxideAnalysis) -> dict[str, Any]:
-    mod = calc_moduli(ox)
-    phases = calc_bogue(ox)
+def analyze_clinker(ox: OxideAnalysis, *, cement: bool = False) -> dict[str, Any]:
+    mod = calc_moduli(ox, cement=cement)
+    phases = calc_bogue(ox, cement=cement)
     lc = calc_liquid_content(phases, ox)
     negative_phases = [
         n for n, v in (

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ChemistryAnalyzeRequest(BaseModel):
+    material_type: Literal["clinker", "cement"] = "clinker"
     SiO2: float = Field(ge=0, le=100)
     Al2O3: float = Field(ge=0, le=100)
     Fe2O3: float = Field(ge=0, le=100)

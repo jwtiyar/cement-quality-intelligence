@@ -894,9 +894,11 @@ function setupMLPredictor() {
     const actualStrengthVal = document.getElementById('actualStrengthVal');
     
     let lastLoadedRecordDate = null;
+    let predictionRevision = 0;
     
     // Function to clear optimizer inputs and reset outputs
     function clearOptimizerInputs() {
+        predictionRevision += 1;
         lastLoadedRecordDate = null;
         latestPredictionContext = null;
         document.getElementById('opt_CaO').value = '';
@@ -1070,6 +1072,10 @@ function setupMLPredictor() {
     };
 
     async function runOptimizationSimulation() {
+        const revision = ++predictionRevision;
+        latestPredictionContext = null;
+        document.getElementById('opt_res_model_strength').innerText = '--';
+        document.getElementById('expectedDateBox').style.display = 'none';
         const cType = cTypeSelect.value;
         const CaOVal = document.getElementById('opt_CaO').value;
         const SiO2Val = document.getElementById('opt_SiO2').value;
@@ -1109,10 +1115,11 @@ function setupMLPredictor() {
             const chemRes = await fetch('/api/chemistry/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ SiO2, Al2O3, Fe2O3, CaO, MgO, SO3 })
+                body: JSON.stringify({ material_type: 'cement', SiO2, Al2O3, Fe2O3, CaO, MgO, SO3 })
             });
             if (!chemRes.ok) throw new Error(`Chemistry analysis failed (${chemRes.status})`);
             const chem = await chemRes.json();
+            if (revision !== predictionRevision) return;
 
             document.getElementById('opt_res_C3S').innerText = chem.phases.C3S.toFixed(2);
             document.getElementById('opt_res_C2S').innerText = chem.phases.C2S.toFixed(2);
@@ -1142,6 +1149,7 @@ function setupMLPredictor() {
                 });
                 if (!res.ok) throw new Error(`Strength prediction failed (${res.status})`);
                 const result = await res.json();
+                if (revision !== predictionRevision) return;
                 if (result.prediction !== undefined) {
                     strengthHtml = result.recentAverage == null ? '--' : `${result.recentAverage.toFixed(1)} MPa`;
                     const decision = result.typesafe || {};
@@ -1233,6 +1241,7 @@ function setupMLPredictor() {
             document.getElementById('opt_res_model_strength').innerText = modelHtml;
             document.getElementById('opt_advice').innerHTML = advice;
         } catch (e) {
+            if (revision !== predictionRevision) return;
             console.error(e);
             document.getElementById('opt_res_model_strength').innerText = 'Could not calculate';
         }

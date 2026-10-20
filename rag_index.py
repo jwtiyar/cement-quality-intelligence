@@ -52,7 +52,7 @@ def chunk_text(text, source_name, page_num, chunk_size=800, overlap=150):
         start += (chunk_size - overlap)
     return chunks
 
-def rebuild_index():
+def rebuild_index(*, output_path=None, summary_path=None):
     print("Building local TF-IDF RAG index...")
     encoding_filter = _UNSUPPORTED_ENCODING_FILTER
     
@@ -62,12 +62,16 @@ def rebuild_index():
         ext = os.path.splitext(f)[1].lower()
         if ext in ['.pdf', '.txt'] and f != "rag_index.pkl":
             knowledge_files.append((f, ext))
+    if summary_path and not any(f == "latest_daily_results.txt" for f, _ in knowledge_files):
+        knowledge_files.append(("latest_daily_results.txt", ".txt"))
             
     all_chunks = []
     files_meta = {}
     
     for f, ext in knowledge_files:
         filepath = os.path.join(KNOWLEDGE_DIR, f)
+        if summary_path and f == "latest_daily_results.txt":
+            filepath = summary_path
         file_hash = get_file_hash(filepath)
         print(f"Parsing {f}...")
         encoding_filter.messages.clear()
@@ -118,11 +122,12 @@ def rebuild_index():
         "tfidf_matrix": tfidf_matrix
     }
     
-    os.makedirs(os.path.dirname(INDEX_PATH), exist_ok=True)
-    tmp_path = INDEX_PATH + ".tmp"
+    output_path = output_path or INDEX_PATH
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    tmp_path = output_path + ".tmp"
     with open(tmp_path, 'wb') as f:
         pickle.dump(index, f)
-    os.replace(tmp_path, INDEX_PATH)
+    os.replace(tmp_path, output_path)
         
     print(f"Index successfully built and saved! Total chunks: {len(all_chunks)}")
 

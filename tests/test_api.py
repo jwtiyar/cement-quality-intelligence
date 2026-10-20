@@ -180,6 +180,17 @@ class TestRawmixEndpoint:
 
 
 class TestChemistryEndpoint:
+    def test_cement_and_clinker_use_distinct_sulfate_corrections(self, client):
+        oxides = {"SiO2": 21, "Al2O3": 5, "Fe2O3": 3, "CaO": 65.5, "SO3": 3}
+        cement = client.post("/api/chemistry/analyze", json={**oxides, "material_type": "cement"})
+        clinker = client.post("/api/chemistry/analyze", json=oxides)
+        assert cement.status_code == clinker.status_code == 200
+        assert cement.json()["moduli"]["LSF"] == 95.12
+        assert cement.json()["phases"]["C3S"] == 60.61
+        assert clinker.json()["moduli"]["LSF"] == 98.27
+        assert clinker.json()["phases"]["C3S"] == 69.17
+        assert client.post("/api/chemistry/analyze", json={**oxides, "material_type": "unknown"}).status_code == 422
+
     def test_valid(self, client):
         resp = client.post("/api/chemistry/analyze", json={
             "SiO2": 21.5, "Al2O3": 5.5, "Fe2O3": 3.5, "CaO": 65.0,
