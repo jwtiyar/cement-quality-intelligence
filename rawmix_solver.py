@@ -38,6 +38,18 @@ class MaterialComp:
 
 MATERIAL_NAMES = ["limestone", "shale", "sand", "pyrite"]
 
+RAWMIX_ASSISTANT_CONTEXT = (
+    "FLS raw-mix course (fl-smith-calculation-of-raw-mix.txt, page 1): "
+    "LSF = 100 × CaO / (2.8 × SiO2 + 1.18 × Al2O3 + 0.65 × Fe2O3). "
+    "SM = SiO2 / (Al2O3 + Fe2O3). "
+    "AM = Al2O3 / Fe2O3. "
+    "For cement with gypsum, the course subtracts 0.7 × SO3 from CaO. "
+    "This app's solver calculates fuel SO3 as (HFO heat / HFO calorific) × HFO sulfur × 2.25. "
+    "It adds fuel SO3 to raw-material clinker SO3 for reporting. "
+    "Clinker LSF and Bogue phases do not use the cement gypsum correction. "
+    "These are app calculation rules, not a general kiln sulfur-retention model."
+)
+
 _OXIDE_FIELDS = ("SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "Na2O", "K2O", "SO3")
 
 

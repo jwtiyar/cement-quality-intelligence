@@ -2098,7 +2098,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     Ask about plant results or search the reference documents.
                 </div>
             `;
-            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">Sources will appear after an answer cites a document.</div>`;
+            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">Matching reference passages will appear here.</div>`;
         });
     }
 
@@ -2175,7 +2175,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 history = history.slice(history.length - 20);
             }
 
-            // Update cited sources list on sidebar
+            // Show retrieved references, which are not necessarily cited in the answer.
             if (data.sources && data.sources.length > 0) {
                 citedSources.innerHTML = "";
                 data.sources.forEach(src => {
@@ -2195,7 +2195,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     citedSources.appendChild(item);
                 });
             } else {
-                citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">No sources cited for this query.</div>`;
+                citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">No matching reference passages.</div>`;
             }
 
         } catch (err) {

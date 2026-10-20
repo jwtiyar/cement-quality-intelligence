@@ -266,6 +266,30 @@ class TestAssistantFreshnessAndRag:
 
 
 class TestInsufficientEvidenceMetrics:
+    def test_monthly_strength_summary_counts_only_recorded_tests_and_names_extrema_dates(self):
+        dates = ["2026-07-04", "2026-07-21", "2026-07-22"]
+        df = pd.DataFrame({
+            "Cement_Type": ["OPC"] * 3,
+            "Date_dt": pd.to_datetime(dates),
+            "Date_str": dates,
+            "Strength_28D": [45.1, 47.0, None],
+            "Strength_Early": [24.0] * 3,
+            "Fineness": [3200.0] * 3,
+            "LSF": [95.0] * 3,
+            "C3S": [55.0] * 3,
+            "CaO": [64.0] * 3,
+            "SO3": [2.2] * 3,
+        })
+
+        summary = state.get_live_dataset_summary(df, refresh_meta={"timestamp": "2026-07-23T08:00:00+00:00"})
+        assert "Last Successful Data Refresh: 2026-07-23T08:00:00+00:00" in summary
+        assert "[OPC] (3 total samples, 2 recorded 28D tests):" in summary
+        assert "[OPC] Latest sample date: 2026-07-22" in summary
+        assert "OPC (3 total samples) -> 28D Strength: Avg=46.0 MPa (2 recorded tests" in summary
+        assert "Min=45.1 on 2026-07-04, Max=47.0 on 2026-07-21" in summary
+        assert "[OPC] Latest recorded 2D: 24.0 MPa on 2026-07-22" in summary
+        assert "[OPC] Latest recorded 28D: 47.0 MPa on 2026-07-21" in summary
+
     def test_insufficient_evidence_does_not_report_zero_rmse(self):
         """When samples are too few to validate baseline error, return unavailable (None) metrics, not 0.0."""
         sparse_df = load_and_prepare(SPARSE_CSV_PATH)

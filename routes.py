@@ -17,7 +17,7 @@ from chemistry import OxideAnalysis, analyze_clinker, lsf_advice
 from codex_provider import CodexProviderError, ask_codex
 from data_prep import default_csv_path
 from ml_train import ML_FEATURES
-from rawmix_solver import calculate_rawmix
+from rawmix_solver import RAWMIX_ASSISTANT_CONTEXT, calculate_rawmix
 from schemas import (
     ChatRequest,
     ChemistryAnalyzeRequest,
@@ -474,7 +474,7 @@ async def _chat_impl(body: ChatRequest):
             for i, (src, txt) in enumerate(zip(sources, retrieved_contexts))
         ])
 
-        live_summary = state.get_live_dataset_summary(snapshot.df)
+        live_summary = state.get_live_dataset_summary(snapshot.df, refresh_meta=snapshot.refresh_meta)
         reliability_summary = ml_reliability_context(body.prediction_context)
 
         system_instruction = (
@@ -487,16 +487,21 @@ async def _chat_impl(body: ChatRequest):
             f"--- 2. ML RELIABILITY & LATEST OPTIMIZER REVIEW ---\n"
             f"{reliability_summary}\n"
             f"---------------------------------------------------\n\n"
-            f"--- 3. REFERENCE MANUALS & TECHNICAL STANDARDS (RAG CONTEXT) ---\n"
+            f"--- 3. THIS APP'S RAW-MIX CALCULATION AND FLS REFERENCE ---\n"
+            f"{RAWMIX_ASSISTANT_CONTEXT}\n"
+            f"---------------------------------------------------\n\n"
+            f"--- 4. REFERENCE MANUALS & TECHNICAL STANDARDS (RAG CONTEXT) ---\n"
             f"{context_str if context_str else 'No relevant reference manual chunks retrieved.'}\n"
             f"-----------------------------------------------------------------\n\n"
             "GUIDELINES FOR ANSWERING:\n"
             "1. For questions asking about daily, weekly, monthly, or historical plant performance:\n"
             "   - ALWAYS analyze and use the LIVE PLANT LABORATORY DATA provided above.\n"
+            "   - Distinguish the latest sample from the latest sample with a recorded result for each test age.\n"
             "   - CURING RULE: Only samples with production age under 28 days can physically be 'Pending 28D Curing'. Older records without 28D strength are unrecorded tests, not in-progress curing.\n"
-            "   - Calculate exact averages, compare time periods, list specific high/low dates, and report actual figures (MPa, cm²/g, %).\n"
+            "   - Use recorded-test counts for strength statistics, not total sample counts. Never invent a date or value absent from the supplied context.\n"
             "2. For questions about cement chemistry, troubleshooting, standards, raw mix solver, or operational theory:\n"
-            "   - Use the REFERENCE MANUALS & TECHNICAL STANDARDS and standard cement engineering principles.\n"
+            "   - Use this app's calculation rules for questions about this solver. Do not substitute a formula from a different source for the named FLS course.\n"
+            "   - Use the reference manuals for other technical claims, and say when the needed source is absent.\n"
             "3. Be clear, precise, professional, and highlight actionable quality insights for plant engineers."
         )
 

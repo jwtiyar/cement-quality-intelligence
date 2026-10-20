@@ -91,13 +91,19 @@ def _find_28d_era_start(df: pd.DataFrame) -> int | None:
     return None
 
 
-def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
+def get_live_dataset_summary(
+    df: pd.DataFrame | None = None,
+    refresh_meta: dict[str, Any] | None = None,
+) -> str:
     """Return an exact, Python-calculated summary of laboratory data for assistant context."""
     if df is None:
         snapshot = _current_snapshot
         df = snapshot.df if snapshot is not None else df_global
     if df is None or df.empty:
         return "No live laboratory dataset loaded."
+
+    if refresh_meta is None and _current_snapshot is not None and df is _current_snapshot.df:
+        refresh_meta = _current_snapshot.refresh_meta
 
     valid_df = df.dropna(subset=["Date_dt"]).sort_values("Date_dt", ascending=False)
     if valid_df.empty:
@@ -112,6 +118,10 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
     lines.append("=== LIVE PLANT LABORATORY DATASET SUMMARY (EXACT PYTHON STATISTICS) ===")
     lines.append(f"Total Daily Laboratory Records: {total_records}")
     lines.append(f"Data Coverage Range: {earliest} to {latest} (Latest Date: {latest})")
+    if refresh_meta and refresh_meta.get("timestamp"):
+        lines.append(f"Last Successful Data Refresh: {refresh_meta['timestamp']}")
+    else:
+        lines.append("Last Successful Data Refresh: unavailable")
 
     lines.append("\n--- OVERALL HISTORICAL AVERAGES PER CEMENT TYPE ---")
     for ctype in sorted(df["Cement_Type"].unique()):
@@ -123,9 +133,26 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
         c3s_avg = sub["C3S"].mean()
 
         lines.append(
-            f"• [{ctype}] ({len(sub)} tests): 28D Strength Avg={s28_avg:.1f} MPa | "
+            f"• [{ctype}] ({len(sub)} total samples, {int(sub['Strength_28D'].notna().sum())} recorded 28D tests): 28D Strength Avg={s28_avg:.1f} MPa | "
             f"Early Strength Avg={se_avg:.1f} MPa | Blaine Avg={fin_avg:.0f} cm²/g | "
             f"LSF Avg={lsf_avg:.1f}% | C3S Avg={c3s_avg:.1f}%"
+        )
+        latest_sample = sub.dropna(subset=["Date_dt"]).sort_values("Date_dt")
+        latest_2d = sub.dropna(subset=["Date_dt", "Strength_Early"]).sort_values("Date_dt")
+        latest_28d = sub.dropna(subset=["Date_dt", "Strength_28D"]).sort_values("Date_dt")
+        lines.append(
+            f"• [{ctype}] Latest sample date: {latest_sample.iloc[-1]['Date_str']}" if not latest_sample.empty
+            else f"• [{ctype}] Latest sample date: none"
+        )
+        lines.append(
+            f"• [{ctype}] Latest recorded 2D: "
+            f"{latest_2d.iloc[-1]['Strength_Early']:.1f} MPa on {latest_2d.iloc[-1]['Date_str']}" if not latest_2d.empty
+            else f"• [{ctype}] Latest recorded 2D: none"
+        )
+        lines.append(
+            f"• [{ctype}] Latest recorded 28D: "
+            f"{latest_28d.iloc[-1]['Strength_28D']:.1f} MPa on {latest_28d.iloc[-1]['Date_str']}" if not latest_28d.empty
+            else f"• [{ctype}] Latest recorded 28D: none"
         )
 
     # Monthly Summary (Last 24 months)
@@ -143,13 +170,23 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
             fin_vals = sub["Fineness"].dropna()
             lsf_vals = sub["LSF"].dropna()
 
-            s28_str = f"Avg={s28_vals.mean():.1f} MPa (Min={s28_vals.min():.1f}, Max={s28_vals.max():.1f})" if not s28_vals.empty else "N/A"
+            if s28_vals.empty:
+                s28_str = "N/A (0 recorded tests)"
+            else:
+                tested = sub.loc[s28_vals.index]
+                low = tested.loc[s28_vals.idxmin()]
+                high = tested.loc[s28_vals.idxmax()]
+                s28_str = (
+                    f"Avg={s28_vals.mean():.1f} MPa ({len(s28_vals)} recorded tests; "
+                    f"Min={low['Strength_28D']:.1f} on {low['Date_str']}, "
+                    f"Max={high['Strength_28D']:.1f} on {high['Date_str']})"
+                )
             se_str = f"Avg={se_vals.mean():.1f} MPa" if not se_vals.empty else "N/A"
             fin_str = f"Avg={fin_vals.mean():.0f} cm²/g" if not fin_vals.empty else "N/A"
             lsf_str = f"LSF={lsf_vals.mean():.1f}%" if not lsf_vals.empty else "N/A"
 
             lines.append(
-                f"• {ym} | {ctype} ({len(sub)} records) -> 28D Strength: {s28_str} | "
+                f"• {ym} | {ctype} ({len(sub)} total samples) -> 28D Strength: {s28_str} | "
                 f"Early Strength: {se_str} | Blaine: {fin_str} | {lsf_str}"
             )
 
@@ -195,10 +232,14 @@ def get_live_dataset_summary(df: pd.DataFrame | None = None) -> str:
     return "\n".join(lines)
 
 
-def write_dataset_summary_to_file(df: pd.DataFrame, summary_path: str = "knowledge_base/latest_daily_results.txt") -> None:
+def write_dataset_summary_to_file(
+    df: pd.DataFrame,
+    summary_path: str = "knowledge_base/latest_daily_results.txt",
+    refresh_meta: dict[str, Any] | None = None,
+) -> None:
     """Generate and write a clean text summary of laboratory results into knowledge_base."""
     os.makedirs(os.path.dirname(summary_path), exist_ok=True)
-    summary_text = get_live_dataset_summary(df)
+    summary_text = get_live_dataset_summary(df, refresh_meta=refresh_meta)
     tmp_path = summary_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(summary_text)
@@ -475,7 +516,7 @@ async def refresh_dataset_transactional(
                         "records": len(df_new),
                     },
                 )
-                write_dataset_summary_to_file(df_new, staged_summary)
+                write_dataset_summary_to_file(df_new, staged_summary, refresh_meta=candidate.refresh_meta)
                 rag_index.rebuild_index(output_path=staged_index, summary_path=staged_summary)
                 for path in (summary_path, rag_index.INDEX_PATH):
                     backup = f"{path}.refresh.{refresh_token}.bak" if os.path.isfile(path) else None

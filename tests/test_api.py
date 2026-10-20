@@ -302,6 +302,11 @@ class TestChatEndpoint:
         assert resp.json()["provider"] == "codex"
         assert resp.json()["model"] == "Codex test model"
         assert "REFERENCE MANUALS & TECHNICAL STANDARDS" in captured["prompt"]
+        assert "1.18 × Al2O3 + 0.65 × Fe2O3" in captured["prompt"]
+        assert "SM = SiO2 / (Al2O3 + Fe2O3)" in captured["prompt"]
+        assert "AM = Al2O3 / Fe2O3" in captured["prompt"]
+        assert "HFO sulfur × 2.25" in captured["prompt"]
+        assert "Use recorded-test counts" in captured["prompt"]
         assert "We are checking raw mix." in captured["prompt"]
         assert "What does the manual say about LSF?" in captured["prompt"]
 
