@@ -276,6 +276,29 @@ def _build_cache_and_snapshot(
         for c in CEMENT_TYPES
     }
 
+    # Fineness cross-check audit: monthly medians of Blaine vs sieve residue, per type.
+    # Designed to expose Blaine instrument drift (a healthy pair anticorrelates ~ -0.7).
+    fineness_audit = {}
+    for c in CEMENT_TYPES:
+        s = df[df["Cement_Type"] == c].dropna(subset=["Fineness", "Residue_80"]).copy()
+        if s.empty:
+            fineness_audit[c] = {"months": [], "blaine": [], "residue": [], "r": None, "n": 0}
+            continue
+        g = (
+            s.assign(MonthKey=s["Date_str"].str[:7])
+            .groupby("MonthKey")
+            .agg(blaine=("Fineness", "median"), residue=("Residue_80", "median"))
+            .reset_index()
+        )
+        r_val = float(g["blaine"].corr(g["residue"])) if len(g) > 2 else None
+        fineness_audit[c] = {
+            "months": g["MonthKey"].tolist(),
+            "blaine": [round(float(v)) for v in g["blaine"]],
+            "residue": [round(float(v), 2) for v in g["residue"]],
+            "r": round(r_val, 2) if r_val is not None and not pd.isna(r_val) else None,
+            "n": int(len(s)),
+        }
+
     low_strength = df.dropna(subset=["Strength_28D"]).sort_values("Strength_28D").head(10)
     low_strength_list = []
     for _, row in low_strength.iterrows():
@@ -353,6 +376,7 @@ def _build_cache_and_snapshot(
         "trends": {"labels": [str(y) for y in years], "data": trends},
         "averages": get_averages_data(df, period_type="all", year="all"),
         "correlation": {"columns": corr_cols, "matrix": corr_matrix, "byType": correlation_by_type},
+        "finenessAudit": fineness_audit,
         "lowStrengthDays": low_strength_list,
         "anomalies": anomalies,
         "distribution": type_counts,

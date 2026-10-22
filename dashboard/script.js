@@ -2,6 +2,7 @@ let trendChart = null;
 let monthlyChart = null;
 let distributionChart = null;
 let importanceChart = null;
+let finAuditChart = null;
 let dashboardData = null;
 let latestPredictionContext = null;
 
@@ -85,7 +86,15 @@ function syncChartTheme() {
         importanceChart.data.datasets[0].backgroundColor = themeToken('--accent-subtle') || getCementChartColor(cType);
     }
 
-    [trendChart, monthlyChart, distributionChart, importanceChart].filter(Boolean).forEach(chart => {
+    if (finAuditChart && finAuditChart.data?.datasets) {
+        ['OPC', 'SRC', 'SBC'].forEach((c, idx) => {
+            if (finAuditChart.data.datasets[idx]) {
+                finAuditChart.data.datasets[idx].backgroundColor = CEMENT_COLORS[c].border;
+            }
+        });
+    }
+
+    [trendChart, monthlyChart, distributionChart, importanceChart, finAuditChart].filter(Boolean).forEach(chart => {
         const plugins = chart.options.plugins || {};
         if (plugins.legend?.labels) plugins.legend.labels.color = text;
         if (plugins.tooltip) plugins.tooltip.backgroundColor = tooltip;
@@ -345,6 +354,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (heading) heading.innerText = `${e.target.value} Correlation Matrix`;
             buildCorrelationTable();
         });
+
+        // 3b. Fineness cross-check scatter (Blaine vs sieve residue, monthly medians)
+        initFinenessAuditChart();
 
         // 4. Setup ML Predictor
         setupMLPredictor();
@@ -866,6 +878,69 @@ function buildCorrelationTable() {
     bodyHTML += '</tbody>';
 
     table.innerHTML = headerHTML + bodyHTML;
+}
+
+// Fineness Cross-Check: scatter of monthly median Blaine vs sieve residue per type.
+// A healthy instrument pair anticorrelates (~ -0.7); a flat/wrong-signed cloud
+// is direct evidence for the lab audit conversation.
+function initFinenessAuditChart() {
+    if (typeof Chart === 'undefined') return;
+    const audit = dashboardData?.finenessAudit;
+    const panel = document.getElementById('finAuditChart');
+    if (!audit || !panel) return;
+
+    function fmtR(r) {
+        const v = Number(r);
+        return Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}` : 'n/a';
+    }
+
+    const datasets = ['OPC', 'SRC', 'SBC']
+        .filter(c => audit[c] && audit[c].months && audit[c].months.length)
+        .map(c => ({
+            label: `${c} r=${fmtR(audit[c].r)}`,
+            data: audit[c].months.map((m, i) => ({ x: audit[c].blaine[i], y: audit[c].residue[i], m })),
+            backgroundColor: CEMENT_COLORS[c].border,
+            pointRadius: 2.5,
+            pointHoverRadius: 4
+        }));
+
+    finAuditChart = new Chart(panel.getContext('2d'), {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: themeToken('--text-secondary'), font: { family: 'system-ui' }, boxWidth: 10, usePointStyle: true }
+                },
+                tooltip: {
+                    backgroundColor: themeToken('--chart-tooltip'),
+                    titleFont: { family: 'system-ui' },
+                    bodyFont: { family: 'system-ui' },
+                    callbacks: {
+                        label: (item) => {
+                            const raw = item.raw;
+                            return `${raw.m}: Blaine ${raw.x} cm²/g, Residue ${raw.y}%`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: 'Blaine (cm²/g)', color: themeToken('--text-secondary') },
+                    ticks: { color: themeToken('--text-secondary') },
+                    grid: { color: themeToken('--chart-grid') }
+                },
+                y: {
+                    title: { display: true, text: 'Sieve Residue %R80 (%)', color: themeToken('--text-secondary') },
+                    ticks: { color: themeToken('--text-secondary') },
+                    grid: { color: themeToken('--chart-grid') }
+                }
+            }
+        }
+    });
 }
 
 function getCorrelationStyle(val) {
