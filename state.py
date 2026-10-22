@@ -267,7 +267,7 @@ def _build_cache_and_snapshot(
             for c in CEMENT_TYPES
         }
 
-    corr_cols = ["Strength_28D", "Strength_Early", "C3S", "C2S", "Fineness", "CaO", "SiO2", "LSF", "SM", "AM", "SO3"]
+    corr_cols = ["Strength_28D", "Strength_Early", "C3S", "C2S", "Fineness", "Residue_80", "CaO", "SiO2", "LSF", "SM", "AM", "SO3"]
     df_opc = df[df["Cement_Type"] == "OPC"].copy()
     corr_matrix = df_opc[corr_cols].corr().fillna(0).to_dict()
     # Per-type matrices so the dashboard can switch OPC / SRC / SBC
