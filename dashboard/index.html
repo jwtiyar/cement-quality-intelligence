@@ -309,8 +309,16 @@
 
                 <!-- Correlation Matrix -->
                 <div class="correlation-container panel span-full">
-                    <h2>OPC Correlation Matrix</h2>
-                    <p class="section-desc">Pearson linear correlation coefficient (r). +1 indicates direct relationship; -1 indicates inverse relationship.</p>
+                    <div class="chart-header">
+                        <h2>OPC Correlation Matrix</h2>
+                        <select id="corrCementType" aria-label="Cement type for correlation matrix">
+                            <option value="OPC" selected>OPC</option>
+                            <option value="SRC">SRC</option>
+                            <option value="SBC">SBC</option>
+                        </select>
+                    </div>
+                    <p class="section-desc">Pearson linear correlation coefficient (r). +1 indicates direct relationship; -1 indicates inverse relationship.
+                        <br><strong>How to read this:</strong> correlations are weak in absolute terms because the plant operates inside tight quality windows (range restriction) — expect |r| well below 1 even for real effects. C3S hydrates in days and drives early strength; C2S hydrates slowly and matters mostly beyond 28 days. C3S and C2S are mathematically anticoupled by the Bogue equations (r &asymp; -0.96 to -0.99), so treat their rows as one signal, not two independent ones. Switch cement type above — products with different clinker targets (SRC, SBC) legitimately show different signs.</p>
                     <div class="correlation-grid-wrapper">
                         <table id="correlationTable">
                             <!-- Populated dynamically -->

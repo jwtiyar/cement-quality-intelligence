@@ -340,6 +340,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 3. Populate Correlation Matrix (Heatmap Table)
         buildCorrelationTable();
+        document.getElementById('corrCementType')?.addEventListener('change', (e) => {
+            const heading = document.querySelector('.correlation-container h2');
+            if (heading) heading.innerText = `${e.target.value} Correlation Matrix`;
+            buildCorrelationTable();
+        });
 
         // 4. Setup ML Predictor
         setupMLPredictor();
@@ -810,9 +815,13 @@ function updateEraSubtitle(param) {
 function buildCorrelationTable() {
     const table = document.getElementById('correlationTable');
     if (!table || !dashboardData || !dashboardData.correlation) return;
-    const cols = dashboardData.correlation.columns || [];
-    const matrix = dashboardData.correlation.matrix;
-    const matrixDict = dashboardData.correlation.matrixDict;
+    const corr = dashboardData.correlation;
+    const selectedType = document.getElementById('corrCementType')?.value || 'OPC';
+    const perType = corr.byType && corr.byType[selectedType];
+    const cols = corr.columns || [];
+    // Per-type entries are column-name keyed dicts; top-level payload keeps the legacy shape
+    const matrixDict = perType ? perType : corr.matrixDict;
+    const matrix = perType ? null : corr.matrix;
     if (!cols.length || (!matrix && !matrixDict)) return;
 
     // Build header row
@@ -866,17 +875,17 @@ function getCorrelationStyle(val) {
             color: 'var(--accent)'
         };
     }
-    const isLight = document.documentElement.dataset.themeResolved === 'light';
     if (val > 0) {
         const opacity = Math.min(Math.max(val * 0.7, 0.08), 0.85);
-        const textColor = opacity > 0.45 ? '#ffffff' : (isLight ? '#12191a' : '#e6eded');
+        // Faint cells sit on the theme-adaptive panel background; --text-primary follows the theme, so no rebuild needed on theme switch.
+        const textColor = opacity > 0.45 ? '#ffffff' : 'var(--text-primary)';
         return {
             bg: `rgba(217, 83, 79, ${opacity.toFixed(2)})`,
             color: textColor
         };
     } else {
         const opacity = Math.min(Math.max(Math.abs(val) * 0.7, 0.08), 0.85);
-        const textColor = opacity > 0.45 ? '#ffffff' : (isLight ? '#12191a' : '#e6eded');
+        const textColor = opacity > 0.45 ? '#ffffff' : 'var(--text-primary)';
         return {
             bg: `rgba(94, 161, 201, ${opacity.toFixed(2)})`,
             color: textColor
@@ -1704,7 +1713,7 @@ async function calculateRawMixProportions() {
             .join('');
 
         document.getElementById('raw_result_wet').innerHTML = Object.entries(data.wet_proportions)
-            .map(([k, v]) => `<li><span style="display:inline-block; width:120px; color:#fff;">${k}:</span> <strong>${v}%</strong></li>`)
+            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${k}:</span> <strong>${v}%</strong></li>`)
             .join('');
 
         const cl = data.clinker;
