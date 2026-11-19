@@ -75,7 +75,7 @@ def _validate_materials(materials: dict[str, Any]) -> dict[str, MaterialComp]:
 
 
 def _validate_hfo(hfo: dict[str, Any]) -> tuple[float, float, float]:
-    heat = float(hfo.get("heat", 730))
+    heat = float(hfo.get("heat", 740))
     calorific = float(hfo.get("calorific", 9800))
     sulfur = float(hfo.get("sulfur", 2.5))
     for name, v in (("heat", heat), ("calorific", calorific), ("sulfur", sulfur)):
@@ -328,7 +328,6 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
 
     cl_so3_fuel = _fuel_so3(hfo_heat, hfo_cal, hfo_sulfur)
     cl_basis = _clinker_basis(materials)
-    x5 = 0.0
 
     if mode == "solve":
         target_lsf, target_sm, target_am = _validate_targets(payload["targets"])
@@ -351,10 +350,10 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         B = [0.0, 0.0, 0.0, 100.0]
         X = _solve4x4(M, B)
         if X is not None and all(v >= -1e-9 for v in X):
-            x_cl = X + [x5]
+            x_cl = list(X)
             solve_method = "exact"
         else:
-            x_cl = _solve_constrained(deltas, B[:3], X) + [x5]
+            x_cl = _solve_constrained(deltas, B[:3], X)
             solve_method = "constrained"
     else:
         p = _validate_recipe(payload["recipe"])
@@ -368,7 +367,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             for i in range(4)
         ]
         total_cl = sum(c_dry)
-        x_cl = [(c_dry[i] / total_cl) * (100.0 - x5) for i in range(4)] + [x5]
+        x_cl = [(c_dry[i] / total_cl) * 100.0 for i in range(4)]
 
     clinker_chem: dict[str, float] = {}
     for oxide in ("SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "Na2O", "K2O", "SO3"):

@@ -54,9 +54,17 @@ class RawMixTargets(BaseModel):
 
 
 class HFO(BaseModel):
-    heat: float = Field(default=730, ge=0)
+    heat: float = Field(default=740, ge=0)
     calorific: float = Field(default=9800, gt=0)
     sulfur: float = Field(default=2.5, ge=0, le=100)
+
+
+MonthlyParam = Literal[
+    "SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3",
+    "LSF", "C3S", "C2S", "C3A", "C4AF", "SM", "AM",
+    "L.O.I", "Fineness", "Strength_2D", "Strength_Early",
+    "Strength_28D", "Residue_80",
+]
 
 
 class MaterialPrices(BaseModel):

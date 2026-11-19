@@ -11,7 +11,7 @@ import hashlib
 import os
 import shutil
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -47,6 +47,7 @@ class AppStateSnapshot:
     dataset_version: str
     refresh_meta: dict[str, Any]
     created_at: str
+    new_records: tuple[dict[str, str], ...] = ()
 
 
 _current_snapshot: AppStateSnapshot | None = None
@@ -472,6 +473,28 @@ def reload_from_csv(csv_path: str | None = None) -> None:
     print(f"State initialized: {len(df)} records, version {snapshot.dataset_version}")
 
 
+def _compute_new_records(
+    old_df: pd.DataFrame | None,
+    new_df: pd.DataFrame | None,
+) -> tuple[dict[str, str], ...]:
+    """Identify newly added (date, cement_type) records between snapshots."""
+    if old_df is None or old_df.empty or new_df is None or new_df.empty:
+        return ()
+
+    def _keys(frame: pd.DataFrame) -> set[tuple[str, str]]:
+        date_col = "Date_str" if "Date_str" in frame.columns else "Date"
+        if date_col not in frame.columns or "Cement_Type" not in frame.columns:
+            return set()
+        subset = frame[[date_col, "Cement_Type"]].dropna()
+        return {
+            (str(d), str(t))
+            for d, t in subset.itertuples(index=False, name=None)
+        }
+
+    added = _keys(new_df) - _keys(old_df)
+    return tuple({"date": d, "type": t} for d, t in sorted(added))
+
+
 def _stage_refresh_sync(
     staging_csv: str,
     allow_deletions: bool,
@@ -517,6 +540,7 @@ async def refresh_dataset_transactional(
     staged_backup = f"{active_csv}.staging.{refresh_token}.backup"
 
     async with _refresh_lock:
+        previous_df = _current_snapshot.df if _current_snapshot is not None else None
         committed = False
         abandoned = threading.Event()
         stage_finished = threading.Event()
@@ -572,6 +596,8 @@ async def refresh_dataset_transactional(
             while not stage_task.done():
                 await asyncio.wait({stage_task}, timeout=0.25)
             candidate_snapshot = stage_task.result()
+            added_records = _compute_new_records(previous_df, candidate_snapshot.df)
+            candidate_snapshot = dataclass_replace(candidate_snapshot, new_records=added_records)
             await asyncio.sleep(0)
 
             if cancellation_check and cancellation_check():

@@ -91,7 +91,7 @@ class TestBogue:
 
 class TestLiquidContent:
     def test_lea_parker_reference(self):
-        # ASTM/Lea&Parker at 1400C: 1.13*C3A + 1.35*C4AF + MgO + Na2O + 0.65*K2O
+        # Lea & Parker at 1450C (plant workbook convention): 1.13*C3A + 1.35*C4AF + MgO + Na2O + 0.65*K2O
         ox = OxideAnalysis(MgO=2.0, Na2O=0.2, K2O=0.6)
         phases = calc_bogue(REF_OXIDE)
         lc = calc_liquid_content(phases, ox)

@@ -13,7 +13,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,8 +23,8 @@ try {
   playwright = require("playwright");
 } catch {
   const fallbackPaths = [
-    "/home/jwty/node_modules/.pnpm/node_modules/playwright",
-    "/home/jwty/node_modules/playwright",
+    join(homedir(), "node_modules/.pnpm/node_modules/playwright"),
+    join(homedir(), "node_modules/playwright"),
   ];
   for (const p of fallbackPaths) {
     try {

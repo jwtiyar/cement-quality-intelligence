@@ -70,7 +70,7 @@ def load_and_prepare(csv_path: str | None = None) -> pd.DataFrame:
     else:
         df["Fineness"] = np.nan
 
-    # Sieve residue on 80 µm (%R80 / %R,80) — fineness proxy, r=-0.82 with 28D
+    # Sieve residue on 80 µm (%R80 / %R,80) — fineness cross-check alongside Blaine
     residue_cols = [c for c in df.columns if "%R" in c.upper()]
     if residue_cols:
         df["Residue_80"] = df[residue_cols[0]]

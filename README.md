@@ -4,7 +4,7 @@ An intelligent, full-stack dashboard for cement plant quality control. This appl
 
 ## Key Features
 
-- **Machine Learning Strength Prediction:** Automatically trains XGBoost models on your historical data (spanning 10+ years) to predict 28-day compressive strength based on 2-day strength, chemistry, and fineness. Separate models are trained dynamically for OPC, SRC, and SBC. The loader keeps each cement type on its latest authoritative 28-day source column so workbook-format changes cannot mix target regimes. Validation is chronological and must beat a recent-data baseline before ML is shown as a sample-specific estimate; otherwise the UI uses a clearly labeled recent-data baseline.
+- **Machine Learning Strength Prediction:** Automatically trains XGBoost models on your historical data (spanning 10+ years) to predict 28-day compressive strength based on 2-day strength, chemistry, and fineness. Separate models are trained dynamically for OPC, SRC, and SBC. The loader consolidates equivalent 28-day source columns (`Cmp.St. Mpa_28 day`, `28 day`, `28 days`) and records column provenance in `Strength_28D_Source`. Validation is chronological and must beat a recent-data baseline before ML is shown as a sample-specific estimate; otherwise the UI uses a clearly labeled recent-data baseline.
 - **Raw Mix Optimization Solver:** Enter the chemistry of your raw materials (Limestone, Clay, Iron Ore, etc.) and target moduli (LSF, SM, AM). The solver validates inputs, calculates the optimal blend proportions, predicts resulting clinker chemistry (SiO₂, Al₂O₃, Fe₂O₃, CaO), Bogue phases (C₃S, C₂S, C₃A, C₄AF), and ensures Liquid Phase content is within safe sintering limits (23%-29%). When targets are simultaneously unreachable with the given materials, the solver falls back to the closest feasible mix and reports residuals + infeasibility instead of returning physically impossible negative proportions.
 - **AI Process & Quality Assistant (RAG & Live Data):** Chat with your plant manuals, ASTM standards, or textbooks right inside the dashboard. A local TF-IDF search engine retrieves the exact relevant paragraphs and pages, then the UI can send that context to **Gemini 3.8 Flash** or a locally signed-in **Codex/ChatGPT account**. Codex runs in an ephemeral read-only session with connectors and network tools disabled. The assistant also receives the live plant laboratory summary. Chat output is HTML-escaped before rendering to prevent prompt-injection XSS.
 - **Optional TypeSafe Decision Review:** When `TYPESAFE_API_KEY` is configured, semantic checks rerank retrieved evidence, review raw-mix recommendations, and hold uncertain ML estimates for qualified review. If the service is unavailable, deterministic application behavior remains in place.
@@ -93,7 +93,7 @@ If you run this application and the year folders (`202X`) are missing from the p
 ## Installation & Setup
 
 ### Prerequisites
-- Python 3.10 or newer installed on your system.
+- Python 3.12 or newer installed on your system.
 - Git (optional, if you want to clone from a repository instead of copying files).
 - A Gemini API key or a local Codex CLI signed in with `codex login` (needed for AI responses).
 
@@ -158,17 +158,17 @@ cd cement_app
 ./venv/bin/python -m pytest tests/ -v
 ```
 
-110 tests covering: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV and derived chemistry fallbacks), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), optional TypeSafe decision contracts, and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
+The pytest suite covers: chemistry math (moduli, Bogue phases, liquid content, diagnostics, phase validity flags), the raw-mix solver (solve/recipe modes, constrained infeasible targets, input validation, residuals/feasibility status), dataset normalization (real CSV and derived chemistry fallbacks), Pydantic API validation (422 boundary tests), ML training sanity (chronological validation, confidence labels), optional TypeSafe decision contracts, and `.env` parsing. Run `./venv/bin/python verify_cement_logic.py` for the FLS-reference verification report.
 
 ## Smoke test (optional, requires Playwright)
 
 ```bash
 # one-time setup (needs ~110 MB free in the temporary directory):
-TMPDIR="${TMPDIR:-/tmp}/cement-app-playwright" npx playwright install firefox
+TMPDIR="${TMPDIR:-/tmp}/cement-app-playwright" npx playwright install chromium
 node tests/smoke_dashboard.mjs
 ```
 
-The script boots the server, loads the dashboard in a real Firefox browser, clicks through the raw-mix solver, and fails on any uncaught JS error.
+The script boots the server, loads the dashboard in a real Chromium browser, clicks through the raw-mix solver, and fails on any uncaught JS error.
 
 ## Project Architecture
 
@@ -178,7 +178,7 @@ The script boots the server, loads the dashboard in a real Firefox browser, clic
 - `rag_index.py`: Local TF-IDF search index builder. Extracts text from PDFs and builds a search index saved to `knowledge_base/rag_index.pkl`. Writes are atomic (temp + rename).
 - `state.py`: Manages the in-memory data cache, generates the anomaly detection lists, and performs global state management. Dataset summary writes are atomic.
 - `build_dataset.py`: Scans and parses messy historical Excel files into a clean pandas DataFrame (`ALL_CEMENT_DATA.csv`). The CSV write is atomic.
-- `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data using chemistry oxides, 2-day strength, and fineness. **Training uses a chronological split** (earliest 80% train, most recent 20% validate) so reported metrics are honest forward-prediction numbers, not random-split leakage. All models currently report `chemistry_only` confidence (R² negative on the forward period).
+- `ml_train.py`: Trains the XGBoost Regressors on the historical CSV data using chemistry oxides, 2-day strength, and fineness. **Evaluation uses chronological rolling out-of-time folds** with a physical 28-day curing delay cutoff (`D_train <= D_sample - 26 days`) so reported metrics are honest forward-prediction numbers without lookahead leakage. Models only graduate when rolling folds satisfy promotion gating; otherwise predictions fall back to the recent-mean baseline and report `chemistry_only` confidence.
 - `rawmix_solver.py`: Contains the linear algebra optimization logic for calculating material proportions based on moduli targets. Validates all inputs (finite oxides, LOI/H2O in [0,100), positive calorific value and targets, non-negative recipes). When the exact 4×4 solve yields negative proportions, falls back to a bounded SLSQP least-squares solve and reports residuals + `feasible`/`infeasible` status.
 - `chemistry.py`: Single source of truth for Boge phase calculations, liquid content, and moduli. `calc_bogue()` returns raw values (no silent clamping) and `analyze_clinker()` flags physically impossible compositions via `phases_valid` / `negative_phases`.
 - `dashboard/`: Contains the frontend HTML, CSS, and Vanilla JavaScript. AI chat output is HTML-escaped before rendering to prevent prompt-injection XSS.

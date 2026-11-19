@@ -232,6 +232,43 @@ class TestTransactionalRefreshAndTimeout:
 
         asyncio.run(_run())
 
+    def test_refresh_endpoint_reports_new_records(self, tmp_path, monkeypatch):
+        active_csv = str(tmp_path / "ALL_CEMENT_DATA.csv")
+        shutil.copyfile(SYNTHETIC_CSV_PATH, active_csv)
+        monkeypatch.setenv("CEMENT_DATA_CSV", active_csv)
+        state.reload_from_csv(active_csv)
+
+        base_df = pd.read_csv(SYNTHETIC_CSV_PATH)
+        new_row = base_df.iloc[[0]].copy()
+        new_row["Year"] = 2026
+        new_row["Month_Num"] = 12
+        new_row["Cement_Type"] = "OPC"
+        new_row["Date"] = "2026-12-31"
+        new_row["Excel_Date"] = "2026-12-31"
+        expanded_df = pd.concat([base_df, new_row], ignore_index=True)
+
+        def stage(staging_csv, allow_deletions, active_path):
+            expanded_df.to_csv(staging_csv, index=False)
+            return load_and_prepare(staging_csv), {}, {}
+
+        monkeypatch.setattr(state, "_stage_refresh_sync", stage)
+        app = FastAPI()
+        app.include_router(router)
+
+        async def exercise():
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+                first = await async_client.post("/api/refresh")
+                assert first.status_code == 200
+                first_body = first.json()
+                assert first_body["new_records"] == [{"date": "2026-12-31", "type": "OPC"}]
+
+                second = await async_client.post("/api/refresh")
+                assert second.status_code == 200
+                assert second.json()["new_records"] == []
+
+        asyncio.run(exercise())
+
 
 class TestAssistantFreshnessAndRag:
     def test_actual_assistant_summary_file_rebuilt_and_retrieved(self, tmp_path, monkeypatch):

@@ -178,6 +178,18 @@ class TestRawmixEndpoint:
         assert resp.status_code == 400
         assert "Missing materials" in resp.json()["detail"]
 
+    def test_default_hfo_heat_matches_benchmark_740(self, client):
+        resp = client.post("/api/rawmix/calculate", json={
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": BASE_MATERIALS,
+            "targets": {"LSF": 95.0, "SM": 2.4, "AM": 1.5},
+        })
+        assert resp.status_code == 200
+        fuel = resp.json()["economics"]["fuel"]
+        assert fuel["actual_heat"] == 740.0
+        assert fuel["status"] == "standard"
+
 
 class TestChemistryEndpoint:
     def test_cement_and_clinker_use_distinct_sulfate_corrections(self, client):
@@ -444,3 +456,61 @@ class TestDataEndpoints:
     def test_monthly_bad_params_422(self, client):
         resp = client.get("/api/monthly", params={"year": "x", "month": 13})
         assert resp.status_code == 422
+
+    def test_monthly_invalid_month_rejected_422(self, client):
+        resp = client.get("/api/monthly", params={"year": 2026, "month": 13})
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize("param", ["Date_str", "bogus"])
+    def test_monthly_invalid_param_rejected_422(self, client, param):
+        resp = client.get("/api/monthly", params={"year": 2026, "month": 1, "param": param})
+        assert resp.status_code == 422
+
+
+class TestRagRebuildEndpoint:
+    def test_rag_rebuild_non_blocking_and_serialized(self, monkeypatch):
+        import rag_index
+
+        started = threading.Event()
+        calls = 0
+
+        def slow_rebuild():
+            nonlocal calls
+            calls += 1
+            started.set()
+            time.sleep(0.25)
+
+        monkeypatch.setattr(rag_index, "rebuild_index", slow_rebuild)
+        state.reload_from_csv()
+        app = FastAPI()
+        app.include_router(router)
+
+        async def exercise():
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+                # 1. Rebuild runs off the event loop so concurrent reads stay responsive
+                rebuild_task = asyncio.create_task(async_client.post("/api/rag/rebuild"))
+                for _ in range(100):
+                    if started.is_set():
+                        break
+                    await asyncio.sleep(0.01)
+                assert started.is_set()
+                assert not rebuild_task.done()
+                assert (await async_client.get("/api/data")).status_code == 200
+                rebuild_resp = await rebuild_task
+                assert rebuild_resp.status_code == 200
+                assert rebuild_resp.json()["status"] == "success"
+
+                # 2. Rebuild waits while state._refresh_lock is held
+                started.clear()
+                async with state._refresh_lock:
+                    queued_rebuild = asyncio.create_task(async_client.post("/api/rag/rebuild"))
+                    await asyncio.sleep(0.05)
+                    assert not started.is_set()
+                    assert not queued_rebuild.done()
+                queued_resp = await queued_rebuild
+                assert queued_resp.status_code == 200
+                assert started.is_set()
+                assert calls == 2
+
+        asyncio.run(exercise())

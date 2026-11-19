@@ -1,19 +1,10 @@
 import os
 
 import pandas as pd
-import xgboost as xgb
-from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.model_selection import train_test_split
-
-try:
-    from sklearn.metrics import root_mean_squared_error as _rmse_fn
-except ImportError:
-    from sklearn.metrics import mean_squared_error as _mse_fn
-    def _rmse_fn(y_true, y_pred):
-        return float(_mse_fn(y_true, y_pred) ** 0.5)
 
 from chemistry import OxideAnalysis, calc_bogue, calc_moduli
 from data_prep import CEMENT_TYPES, load_and_prepare, ml_training_frame
+from ml_evaluation import rolling_evaluation
 from ml_train import ML_FEATURES, train_all_models
 
 
@@ -80,29 +71,30 @@ def test_ml_logic():
             print(f"No records found for type {ct} to validate.")
             continue
 
-        if ct not in models:
-            print(f"Cement Type: {ct:<5} | Not enough rows to train")
+        report = rolling_evaluation(df, ct, folds=3, bootstrap_samples=50)
+        if report.get("status") != "evaluated":
+            print(f"Cement Type: {ct:<5} | Insufficient rows for rolling evaluation ({len(sub_df)} rows)")
             continue
 
-        model = models[ct]
-        X = sub_df[ML_FEATURES]
-        y = sub_df["Strength_28D"]
-        _, X_test, _, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
-        preds = model.predict(X_test)
-        r2 = r2_score(y_test, preds)
-        mae = mean_absolute_error(y_test, preds)
-        rmse = _rmse_fn(y_test, preds)
-        trained_models[ct] = (model, X.mean())
-
+        xgb_metrics = report["models"]["xgboost"]
+        base_metrics = report["models"]["recent_mean"]
+        promo = report["promotionDecision"]
         meta = ml_data[ct]
+
         print(
-            f"Cement Type: {ct:<5} | Test Records: {len(y_test):<4} | "
-            f"R²: {r2:<5.3f} | MAE: {mae:<5.2f} MPa | RMSE: {rmse:<5.2f} MPa | "
-            f"Confidence: {meta['confidence']}"
+            f"Cement Type: {ct:<5} | Rows: {report['rows']:<4} | "
+            f"Folds Won: {promo['foldsWon']}/{promo['totalFolds']} | "
+            f"XGB MAE: {xgb_metrics['mae']:.3f} vs Base MAE: {base_metrics['mae']:.3f} "
+            f"({promo['maeImprovementPct']:+.2f}%) | "
+            f"R²: {xgb_metrics['r2']:.3f} | RMSE: {xgb_metrics['rmse']:.2f} MPa | "
+            f"Promoted: {promo['promoted']} | Confidence: {meta['confidence']}"
         )
-        importances = pd.Series(model.feature_importances_, index=ML_FEATURES).sort_values(ascending=False)
-        top_3 = ", ".join(f"{k} ({round(v * 100)}%)" for k, v in importances.head(3).items())
-        print(f"  • Top Drivers of 28D Strength: {top_3}")
+        if ct in models:
+            model = models[ct]
+            trained_models[ct] = (model, sub_df[ML_FEATURES].mean())
+            importances = pd.Series(model.feature_importances_, index=ML_FEATURES).sort_values(ascending=False)
+            top_3 = ", ".join(f"{k} ({round(v * 100)}%)" for k, v in importances.head(3).items())
+            print(f"  • Top Drivers of 28D Strength: {top_3}")
         print("-" * 80)
 
     print("\n" + "=" * 80)

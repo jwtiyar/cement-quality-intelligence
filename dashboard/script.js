@@ -388,7 +388,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="glass" style="padding: 2.5rem; text-align: center; color: #ef4444; max-width: 600px; margin: 3rem auto;">
                 <h2>Error Initializing Dashboard</h2>
                 <p style="margin: 1rem 0; color: #94a3b8;">Ensure the FastAPI server is running (e.g. <code>./start_dashboard.sh</code>) and is accessible at <code>http://127.0.0.1:8500</code>.</p>
-                <p style="font-size: 0.85rem; color: #64748b; font-family: monospace;">${error.message}</p>
+                <p style="font-size: 0.85rem; color: #64748b; font-family: monospace;">${escapeHtml(error.message)}</p>
             </div>
         `;
     }
@@ -1023,13 +1023,13 @@ function setupMLPredictor() {
         rmseEl.innerText = `${validationSource} RMSE: ${modelData.rmse == null ? 'n/a' : `${modelData.rmse} MPa`}`;
 
         const confColors = {
-            predictive: '#10b981',
-            exploratory: '#f59e0b',
-            chemistry_only: '#94a3b8'
+            predictive: 'var(--status-nominal)',
+            exploratory: 'var(--status-warning)',
+            chemistry_only: 'var(--text-secondary)'
         };
         if (confEl) {
             confEl.innerText = modelData.confidenceLabel || '';
-            confEl.style.color = confColors[modelData.confidence] || '#94a3b8';
+            confEl.style.color = confColors[modelData.confidence] || 'var(--text-secondary)';
         }
         if (trainEl) {
             const dr = modelData.modelDateRange || {};
@@ -1058,7 +1058,7 @@ function setupMLPredictor() {
         if (!dateVal) return;
 
         searchFeedback.style.display = 'block';
-        searchFeedback.style.color = '#94a3b8';
+        searchFeedback.style.color = 'var(--text-secondary)';
         searchFeedback.innerText = 'Searching...';
 
         try {
@@ -1071,7 +1071,7 @@ function setupMLPredictor() {
                 // Populate inputs with record values
                 updateModelUI(cType, resData.record);
                 
-                searchFeedback.style.color = '#10b981';
+                searchFeedback.style.color = 'var(--status-nominal)';
                 searchFeedback.innerText = `Record loaded for ${dateVal}!`;
                 
                 // If 28-day actual strength exists
@@ -1784,11 +1784,11 @@ async function calculateRawMixProportions() {
         }
 
         document.getElementById('raw_result_dry').innerHTML = Object.entries(data.dry_proportions)
-            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${k}:</span> <strong>${v}%</strong></li>`)
+            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${escapeHtml(k)}:</span> <strong>${escapeHtml(v)}%</strong></li>`)
             .join('');
 
         document.getElementById('raw_result_wet').innerHTML = Object.entries(data.wet_proportions)
-            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${k}:</span> <strong>${v}%</strong></li>`)
+            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${escapeHtml(k)}:</span> <strong>${escapeHtml(v)}%</strong></li>`)
             .join('');
 
         const cl = data.clinker;
@@ -2110,9 +2110,9 @@ function updateRawMixTotals() {
             totalEl.textContent = sum.toFixed(2);
             // Highlight if not close to 100
             if (Math.abs(sum - 100) > 2) {
-                totalEl.style.color = '#ef4444'; // Red
+                totalEl.style.color = 'var(--status-alarm)'; // Red
             } else {
-                totalEl.style.color = '#10b981'; // Green
+                totalEl.style.color = 'var(--status-nominal)'; // Green
             }
         }
     });
@@ -2129,9 +2129,9 @@ function updateRecipeTotals() {
     if (totalEl) {
         totalEl.textContent = sum.toFixed(2) + '%';
         if (Math.abs(sum - 100) > 0.1) {
-            totalEl.style.color = '#ef4444'; // Red
+            totalEl.style.color = 'var(--status-alarm)'; // Red
         } else {
-            totalEl.style.color = '#10b981'; // Green
+            totalEl.style.color = 'var(--status-nominal)'; // Green
         }
     }
 }
@@ -2314,16 +2314,16 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const res = await fetch("/api/rag/rebuild", { method: "POST" });
                 if (res.ok) {
-                    ragStatus.innerHTML = `<strong style="color:#69b88b;">Document index updated.</strong>`;
+                    ragStatus.innerHTML = `<strong style="color:var(--status-nominal);">Document index updated.</strong>`;
                     showAppNotice("Document index updated.", "success");
                 } else {
                     const err = await res.json();
-                    ragStatus.innerHTML = `<strong style="color:#e0716f;">Index update failed.</strong>`;
+                    ragStatus.innerHTML = `<strong style="color:var(--status-alarm);">Index update failed.</strong>`;
                     showAppNotice(`Index update failed: ${err.detail || 'Unknown error'}`, "error");
                 }
             } catch (err) {
                 console.error(err);
-                ragStatus.innerHTML = `<strong style="color:#e0716f;">Could not connect to the document service.</strong>`;
+                ragStatus.innerHTML = `<strong style="color:var(--status-alarm);">Could not connect to the document service.</strong>`;
                 showAppNotice("Could not connect to the document service.", "error");
             } finally {
                 btnRebuildRAG.disabled = false;
@@ -2363,9 +2363,9 @@ function renderSummaryCards(data) {
     if (strengthEl) {
         strengthEl.innerHTML = `
             <div style="font-size: 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem;">
-                <div><span style="color: #38bdf8; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'} <span class="unit">MPa</span></div>
-                <div><span style="color: #10b981; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'} <span class="unit">MPa</span></div>
-                <div><span style="color: #8b5cf6; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'} <span class="unit">MPa</span></div>
+                <div><span style="color: var(--cement-opc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'} <span class="unit">MPa</span></div>
+                <div><span style="color: var(--cement-src); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'} <span class="unit">MPa</span></div>
+                <div><span style="color: var(--cement-sbc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'} <span class="unit">MPa</span></div>
                 ${s.overall !== undefined && s.overall !== null ? `<div style="border-top: 1px dashed var(--panel-border); margin-top: 0.2rem; padding-top: 0.2rem; font-size: 0.8rem; color: var(--text-secondary);">Avg: <strong style="color: var(--text-primary); font-size: 0.95rem;">${s.overall}</strong> <span class="unit">MPa</span></div>` : ''}
             </div>`;
     }
@@ -2376,9 +2376,9 @@ function renderSummaryCards(data) {
     if (c3sEl) {
         c3sEl.innerHTML = `
             <div style="font-size: 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem;">
-                <div><span style="color: #38bdf8; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'} <span class="unit">%</span></div>
-                <div><span style="color: #10b981; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'} <span class="unit">%</span></div>
-                <div><span style="color: #8b5cf6; font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'} <span class="unit">%</span></div>
+                <div><span style="color: var(--cement-opc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'} <span class="unit">%</span></div>
+                <div><span style="color: var(--cement-src); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'} <span class="unit">%</span></div>
+                <div><span style="color: var(--cement-sbc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'} <span class="unit">%</span></div>
                 ${c.overall !== undefined && c.overall !== null ? `<div style="border-top: 1px dashed var(--panel-border); margin-top: 0.2rem; padding-top: 0.2rem; font-size: 0.8rem; color: var(--text-secondary);">Avg: <strong style="color: var(--text-primary); font-size: 0.95rem;">${c.overall}</strong> <span class="unit">%</span></div>` : ''}
             </div>`;
     }
@@ -2457,9 +2457,9 @@ function renderSeasonalBenchmarkCards(data) {
                         <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${s.overall !== null && s.overall !== undefined ? s.overall : '--'} <span class="unit" style="font-size: 0.7rem;">MPa</span></span>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-family: var(--font-mono); margin-top: 0.15rem; color: var(--text-muted);">
-                        <span>OPC: <strong style="color: #38bdf8;">${s.OPC ?? '--'}</strong></span>
-                        <span>SRC: <strong style="color: #10b981;">${s.SRC ?? '--'}</strong></span>
-                        <span>SBC: <strong style="color: #8b5cf6;">${s.SBC ?? '--'}</strong></span>
+                        <span>OPC: <strong style="color: var(--cement-opc);">${s.OPC ?? '--'}</strong></span>
+                        <span>SRC: <strong style="color: var(--cement-src);">${s.SRC ?? '--'}</strong></span>
+                        <span>SBC: <strong style="color: var(--cement-sbc);">${s.SBC ?? '--'}</strong></span>
                     </div>
                 </div>
 
@@ -2470,9 +2470,9 @@ function renderSeasonalBenchmarkCards(data) {
                         <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${c.overall !== null && c.overall !== undefined ? c.overall : '--'} <span class="unit" style="font-size: 0.7rem;">%</span></span>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-family: var(--font-mono); margin-top: 0.15rem; color: var(--text-muted);">
-                        <span>OPC: <strong style="color: #38bdf8;">${c.OPC ?? '--'}</strong></span>
-                        <span>SRC: <strong style="color: #10b981;">${c.SRC ?? '--'}</strong></span>
-                        <span>SBC: <strong style="color: #8b5cf6;">${c.SBC ?? '--'}</strong></span>
+                        <span>OPC: <strong style="color: var(--cement-opc);">${c.OPC ?? '--'}</strong></span>
+                        <span>SRC: <strong style="color: var(--cement-src);">${c.SRC ?? '--'}</strong></span>
+                        <span>SBC: <strong style="color: var(--cement-sbc);">${c.SBC ?? '--'}</strong></span>
                     </div>
                 </div>
 
@@ -2518,13 +2518,13 @@ function renderSeasonalTable(data) {
                 <td style="padding: 0.45rem 0.6rem;">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</td>
                 <td style="padding: 0.45rem 0.6rem; color: var(--text-secondary);">${escapeHtml(item.label)}</td>
                 <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono);">${item.totalRecords.toLocaleString()}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: #38bdf8;">${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #10b981;">${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #8b5cf6;">${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: var(--cement-opc);">${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-src);">${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-sbc);">${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'}</td>
                 <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); font-weight: 650; color: var(--text-primary);">${s.overall !== null && s.overall !== undefined ? s.overall : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: #38bdf8;">${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #10b981;">${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: #8b5cf6;">${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: var(--cement-opc);">${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-src);">${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'}</td>
+                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-sbc);">${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'}</td>
                 <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); font-weight: 650; color: var(--text-primary);">${c.overall !== null && c.overall !== undefined ? c.overall : '--'}</td>
             </tr>
         `;
@@ -2758,8 +2758,8 @@ function renderProcessEconomics(econ) {
             const row = document.createElement('div');
             row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0.4rem; background:var(--panel-muted); border-radius:2px;';
             row.innerHTML = `
-                <span style="color:var(--text-secondary);">${mat} (@ ${cur}${Number(unitPrice).toFixed(2)}/t):</span>
-                <strong style="font-family:var(--font-mono);">${cur}${Number(cost).toFixed(2)} / ton cl</strong>
+                <span style="color:var(--text-secondary);">${escapeHtml(mat)} (@ ${safeCurrency}${Number(unitPrice).toFixed(2)}/t):</span>
+                <strong style="font-family:var(--font-mono);">${safeCurrency}${Number(cost).toFixed(2)} / ton cl</strong>
             `;
             breakdownList.appendChild(row);
         });

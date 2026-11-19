@@ -453,3 +453,20 @@ class TestPredefinedPresets:
         assert (fuel["daily_cost_var"] > 0) == (status == "penalty")
         warnings = [d["message"] for d in result["diagnostics"] if "Fuel consumption is above" in d["message"]]
         assert bool(warnings) == (status == "penalty")
+
+    def test_default_hfo_heat_is_740_standard(self):
+        result = calculate_rawmix({
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": {
+                "limestone": self.LIMESTONE,
+                "shale": self.CLAY,
+                "sand": self.SAND,
+                "pyrite": self.SLAG,
+            },
+            "targets": {"LSF": 95.0, "SM": 2.35, "AM": 1.40},
+            "hfo": {},
+        })
+        fuel = result["economics"]["fuel"]
+        assert fuel["actual_heat"] == 740.0
+        assert fuel["status"] == "standard"

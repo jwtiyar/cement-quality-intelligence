@@ -10,21 +10,6 @@ Use claude-mem search tools for manual memory queries.
 
 # Global Workflow Rules (apply to every project)
 
-## Commit & Push Gate: React Doctor
-
-- **Run `npx react-doctor@latest` before EVERY commit and before EVERY push.** For
-  monorepos, run it at the repo root so it scores every detected React project.
-- The score is a hard gate: do not commit or push while the score is dropping or
-  while any new finding is introduced.
-- After every commit that touched frontend/React code, re-run react-doctor and
-  confirm the score is unchanged or improved before pushing.
-- If react-doctor reports a finding, fix the underlying code first (do not suppress
-  without evidence). Only suppress verified false positives, with an inline
-  `// react-doctor-disable-next-line <rule> -- <reason>` comment or a narrow
-  `ignore.overrides` entry in the project's `doctor.config.*`.
-- Treat react-doctor as the source of truth for the health score; never rely on a
-  previously recorded score without re-running the tool.
-
 ## Commit & Push Gate: Betterleaks
 
 - **Run `betterleaks git .` (and `betterleaks dir .` for new untracked files) before

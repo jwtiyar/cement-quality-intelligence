@@ -25,7 +25,7 @@ if [ ! -d "venv" ]; then
         python -m venv venv
     fi
     if [ $? -ne 0 ]; then
-        echo "[ERROR] Python 3 is not installed or not in PATH. Please install Python 3.10+ and try again."
+        echo "[ERROR] Python 3 is not installed or not in PATH. Please install Python 3.12+ and try again."
         exit 1
     fi
     if [ -f "venv/Scripts/activate" ]; then

@@ -9,7 +9,7 @@ if not exist venv (
     echo [INFO] Virtual environment 'venv' not found. Creating a new one...
     python -m venv venv
     if %errorlevel% neq 0 (
-        echo [ERROR] Python is not installed or not in PATH. Please install Python 3.10+ and try again.
+        echo [ERROR] Python is not installed or not in PATH. Please install Python 3.12+ and try again.
         pause
         exit /b %errorlevel%
     )
@@ -57,7 +57,6 @@ echo 2. Starting AI Dashboard Server...
 echo ===========================================
 echo Open your web browser and go to:
 echo   Local:     http://127.0.0.1:8500
-echo   Tailscale: http://100.71.134.118:8500
 echo (Keep this window open to keep the server running. Press Ctrl+C to stop it.)
 echo ===========================================
 echo.

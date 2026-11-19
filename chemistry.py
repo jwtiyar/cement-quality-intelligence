@@ -66,7 +66,7 @@ def calc_bogue(ox: OxideAnalysis, *, cement: bool = False) -> BoguePhases:
 
 
 def calc_liquid_content(phases: BoguePhases, ox: OxideAnalysis | None = None) -> float:
-    """Lea & Parker liquid at 1400°C (%)."""
+    """Lea & Parker 1450°C liquid phase (%) using the plant workbook alkali-equivalent convention (MgO uncapped; 0.65*K2O)."""
     ox = ox or OxideAnalysis()
     return (
         1.13 * phases.C3A

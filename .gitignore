@@ -24,3 +24,4 @@ rawmix/*
 # Local tool artifacts
 .codegraph/
 graphify-out/
+.archify/

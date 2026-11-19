@@ -10,7 +10,7 @@ from typing import Any
 import anyio
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from chemistry import OxideAnalysis, analyze_clinker, lsf_advice
@@ -21,6 +21,7 @@ from rawmix_solver import RAWMIX_ASSISTANT_CONTEXT, calculate_rawmix
 from schemas import (
     ChatRequest,
     ChemistryAnalyzeRequest,
+    MonthlyParam,
     PredictRequest,
     RawMixRequest,
 )
@@ -107,10 +108,19 @@ async def get_averages(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/api/monthly")
-async def get_monthly(year: int, month: int, param: str = "Strength_28D"):
+async def get_monthly(
+    year: int = Query(..., ge=1900, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    param: MonthlyParam = "Strength_28D",
+):
     snapshot = state.get_snapshot()
     if snapshot.df is None or snapshot.df.empty:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
+    if param not in snapshot.df.columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Parameter '{param}' is not available in the active dataset",
+        )
     try:
         _, num_days = calendar.monthrange(year, month)
         days = list(range(1, num_days + 1))
@@ -276,12 +286,13 @@ async def refresh_data(allow_deletions: bool = False):
                 cancellation_check=cancellation_check,
             )
 
-        reload_rag_index()
+        await anyio.to_thread.run_sync(reload_rag_index)
         return {
             "status": "success",
             "dataset": snapshot.data_cache.get("dataset", {}),
             "dataset_version": snapshot.dataset_version,
             "records": len(snapshot.df),
+            "new_records": list(snapshot.new_records),
         }
     except TimeoutError:
         timed_out = True
@@ -331,27 +342,34 @@ load_env()
 rag_index = None
 
 
+def _load_rag_index_from_disk():
+    index_path = os.environ.get("RAG_INDEX_PATH", "knowledge_base/rag_index.pkl")
+    if os.path.exists(index_path):
+        try:
+            import pickle
+            with open(index_path, "rb") as f:
+                candidate = pickle.load(f)
+            if not isinstance(candidate, dict) or not {"chunks", "vectorizer", "tfidf_matrix"} <= set(candidate):
+                print("RAG index has unexpected structure; ignoring")
+            else:
+                return candidate
+        except Exception as e:
+            print(f"Error loading RAG index: {e}")
+    return None
+
+
 def reload_rag_index():
     global rag_index
-    rag_index = None
-    return get_rag_index()
+    rag_index = _load_rag_index_from_disk()
+    return rag_index
 
 
 def get_rag_index():
     global rag_index
     if rag_index is None:
-        index_path = os.environ.get("RAG_INDEX_PATH", "knowledge_base/rag_index.pkl")
-        if os.path.exists(index_path):
-            try:
-                import pickle
-                with open(index_path, "rb") as f:
-                    candidate = pickle.load(f)
-                if not isinstance(candidate, dict) or not {"chunks", "vectorizer", "tfidf_matrix"} <= set(candidate):
-                    print("RAG index has unexpected structure; ignoring")
-                else:
-                    rag_index = candidate
-            except Exception as e:
-                print(f"Error loading RAG index: {e}")
+        loaded = _load_rag_index_from_disk()
+        if loaded is not None:
+            rag_index = loaded
     return rag_index
 
 
@@ -575,11 +593,11 @@ async def _chat_impl(body: ChatRequest):
 @router.post("/api/rag/rebuild")
 async def rebuild_rag_index():
     try:
-        global rag_index
-        rag_index = None
-
         from rag_index import rebuild_index
-        rebuild_index()
+
+        async with state._refresh_lock:
+            await anyio.to_thread.run_sync(rebuild_index)
+            await anyio.to_thread.run_sync(reload_rag_index)
         return {"status": "success", "message": "RAG index rebuilt successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
