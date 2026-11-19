@@ -514,3 +514,25 @@ class TestRagRebuildEndpoint:
                 assert calls == 2
 
         asyncio.run(exercise())
+
+    def test_rag_rebuild_timeout_returns_504_and_releases_lock(self, monkeypatch):
+        import rag_index
+
+        def slow_rebuild():
+            time.sleep(0.3)
+
+        monkeypatch.setattr(rag_index, "rebuild_index", slow_rebuild)
+        monkeypatch.setattr(routes, "RAG_REBUILD_TIMEOUT_SECONDS", 0.05)
+        state.reload_from_csv()
+        app = FastAPI()
+        app.include_router(router)
+
+        async def exercise():
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+                resp = await async_client.post("/api/rag/rebuild")
+                assert resp.status_code == 504
+                assert "timed out" in resp.json()["detail"].lower()
+                assert not state._refresh_lock.locked()
+
+        asyncio.run(exercise())

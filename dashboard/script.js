@@ -385,10 +385,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Error loading dashboard data:', error);
         document.querySelector('.container').innerHTML = `
-            <div class="glass" style="padding: 2.5rem; text-align: center; color: #ef4444; max-width: 600px; margin: 3rem auto;">
+            <div class="glass" style="padding: 2.5rem; text-align: center; color: var(--status-alarm); max-width: 600px; margin: 3rem auto;">
                 <h2>Error Initializing Dashboard</h2>
-                <p style="margin: 1rem 0; color: #94a3b8;">Ensure the FastAPI server is running (e.g. <code>./start_dashboard.sh</code>) and is accessible at <code>http://127.0.0.1:8500</code>.</p>
-                <p style="font-size: 0.85rem; color: #64748b; font-family: monospace;">${escapeHtml(error.message)}</p>
+                <p style="margin: 1rem 0; color: var(--text-secondary);">Ensure the FastAPI server is running (e.g. <code>./start_dashboard.sh</code>) and is accessible at <code>http://127.0.0.1:8500</code>.</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); font-family: monospace;">${escapeHtml(error.message)}</p>
             </div>
         `;
     }
@@ -1084,13 +1084,13 @@ function setupMLPredictor() {
             } else {
                 // Clear inputs
                 updateModelUI(cType, null, true);
-                searchFeedback.style.color = '#ef4444';
+                searchFeedback.style.color = 'var(--status-alarm)';
                 searchFeedback.innerText = `No record found for ${dateVal} (${cType}). Inputs cleared.`;
                 actualResultBox.style.display = 'none';
             }
         } catch (err) {
             console.error('Lookup failed:', err);
-            searchFeedback.style.color = '#ef4444';
+            searchFeedback.style.color = 'var(--status-alarm)';
             searchFeedback.innerText = 'Error loading record from database.';
         }
     }

@@ -4,7 +4,6 @@ import pandas as pd
 
 from chemistry import OxideAnalysis, calc_bogue, calc_moduli
 from data_prep import CEMENT_TYPES, load_and_prepare, ml_training_frame
-from ml_evaluation import rolling_evaluation
 from ml_train import ML_FEATURES, train_all_models
 
 
@@ -71,22 +70,19 @@ def test_ml_logic():
             print(f"No records found for type {ct} to validate.")
             continue
 
-        report = rolling_evaluation(df, ct, folds=3, bootstrap_samples=50)
-        if report.get("status") != "evaluated":
-            print(f"Cement Type: {ct:<5} | Insufficient rows for rolling evaluation ({len(sub_df)} rows)")
+        meta = ml_data[ct]
+        promo = meta.get("promotionDecision", {})
+        if promo.get("totalFolds", 0) == 0:
+            reason = promo.get("reason", "Insufficient samples")
+            print(f"Cement Type: {ct:<5} | Rows: {meta['trainSamples']:<4} | {reason}")
             continue
 
-        xgb_metrics = report["models"]["xgboost"]
-        base_metrics = report["models"]["recent_mean"]
-        promo = report["promotionDecision"]
-        meta = ml_data[ct]
-
         print(
-            f"Cement Type: {ct:<5} | Rows: {report['rows']:<4} | "
+            f"Cement Type: {ct:<5} | Rows: {meta['trainSamples']:<4} | "
             f"Folds Won: {promo['foldsWon']}/{promo['totalFolds']} | "
-            f"XGB MAE: {xgb_metrics['mae']:.3f} vs Base MAE: {base_metrics['mae']:.3f} "
+            f"XGB MAE: {promo['overallXgbMae']:.3f} vs Base MAE: {promo['overallRecentMeanMae']:.3f} "
             f"({promo['maeImprovementPct']:+.2f}%) | "
-            f"R²: {xgb_metrics['r2']:.3f} | RMSE: {xgb_metrics['rmse']:.2f} MPa | "
+            f"Rolling R²: {promo['overallR2']:.3f} | "
             f"Promoted: {promo['promoted']} | Confidence: {meta['confidence']}"
         )
         if ct in models:
@@ -104,8 +100,8 @@ def test_ml_logic():
     if "OPC" in trained_models:
         model, mean_sample = trained_models["OPC"]
         baseline_x = pd.DataFrame([mean_sample])
-        baseline_pred = model.predict(baseline_x)[0]
-        print(f"Baseline OPC Recipe 28-Day Predicted Strength: {round(baseline_pred, 2)} MPa")
+        baseline_pred = float(model.predict(baseline_x)[0])
+        print(f"Baseline OPC Recipe 28-Day Predicted Strength: {baseline_pred:.2f} MPa")
         print("-" * 80)
 
         for label, perturb in [
@@ -114,10 +110,10 @@ def test_ml_logic():
             ("Increase CaO +1.0%, decrease SiO2 -1.0%", lambda x: x.assign(CaO=x["CaO"] + 1, SiO2=x["SiO2"] - 1)),
         ]:
             x_new = perturb(baseline_x.copy())
-            pred_new = model.predict(x_new)[0]
+            pred_new = float(model.predict(x_new)[0])
             diff = pred_new - baseline_pred
             print(f"Test: {label}")
-            print(f"  • New Prediction: {round(pred_new, 2)} MPa (Change: {round(diff, 2)} MPa)")
+            print(f"  • New Prediction: {pred_new:.2f} MPa (Change: {diff:+.2f} MPa)")
             print("-" * 80)
 
     print("=" * 80)

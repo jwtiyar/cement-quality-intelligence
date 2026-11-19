@@ -31,10 +31,24 @@ from averages import get_averages_data
 
 router = APIRouter()
 CHAT_TIMEOUT_SECONDS = 35.0
+RAG_REBUILD_TIMEOUT_SECONDS = 120.0
 
 
 async def _typesafe_call(fn, *args):
     return await anyio.to_thread.run_sync(fn, *args, abandon_on_cancel=True)
+
+
+async def _run_sync_responsive(fn, *args):
+    task = asyncio.create_task(anyio.to_thread.run_sync(fn, *args, abandon_on_cancel=True))
+    try:
+        # This host can miss a worker-thread wakeup; the bounded wait keeps cancellation responsive.
+        while not task.done():
+            await asyncio.wait({task}, timeout=0.25)
+        return task.result()
+    except BaseException:
+        if not task.done():
+            task.cancel()
+        raise
 
 
 @router.get("/api/data")
@@ -285,8 +299,8 @@ async def refresh_data(allow_deletions: bool = False):
                 allow_deletions=allow_deletions,
                 cancellation_check=cancellation_check,
             )
+            await anyio.to_thread.run_sync(reload_rag_index)
 
-        await anyio.to_thread.run_sync(reload_rag_index)
         return {
             "status": "success",
             "dataset": snapshot.data_cache.get("dataset", {}),
@@ -452,7 +466,7 @@ async def _chat_impl(body: ChatRequest):
             raise HTTPException(status_code=400, detail="Empty message")
 
         snapshot = state.get_snapshot()
-        index = get_rag_index()
+        index = await anyio.to_thread.run_sync(get_rag_index)
         retrieved_contexts = []
         sources = []
 
@@ -595,9 +609,12 @@ async def rebuild_rag_index():
     try:
         from rag_index import rebuild_index
 
-        async with state._refresh_lock:
-            await anyio.to_thread.run_sync(rebuild_index)
-            await anyio.to_thread.run_sync(reload_rag_index)
+        async with asyncio.timeout(RAG_REBUILD_TIMEOUT_SECONDS):
+            async with state._refresh_lock:
+                await _run_sync_responsive(rebuild_index)
+                await _run_sync_responsive(reload_rag_index)
         return {"status": "success", "message": "RAG index rebuilt successfully"}
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="RAG index rebuild timed out.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
