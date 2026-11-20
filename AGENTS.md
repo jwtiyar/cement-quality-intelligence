@@ -131,15 +131,16 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 - **Leakage Prevention**: Any historical sample used to predict D_sample must have had its 28-day test completed and recorded on or before T_pred. In the absence of recorded test completion timestamps, the physical curing constraint enforces:
   D_train <= D_sample - 26 days
 - **Symmetric Baseline**: The recent-mean baseline must respect the identical availability cutoff as the ML model.
-- **Training Window**: Both rolling evaluation and the published XGBoost fit use the latest 12 months when that window contains at least 100 eligible records. Otherwise, they use all eligible records.
+- **Training & New-Data Validation**: The published XGBoost fit uses the latest 12 months when that window contains at least 100 eligible records (otherwise all eligible records). Rolling evaluation (`select_validation_frame`) evaluates on the new-data window (`Year >= 2025` when `>= 180` complete rows exist, otherwise all rows) and reports the trained XGBoost model's own rolling `r2`/`rmse` plus any active training-window distortion warnings (`trainingWarnings`). `/api/predict` serves live XGBoost predictions without falling back to `recent_mean`.
+- **Lab Data Quality Warnings**: `detect_lab_anomalies` flags out-of-range oxides (`ANOMALY_BOUNDS`), cement-type-specific fineness/strength/residue outliers (`CEMENT_ANOMALY_BOUNDS`), and same-day cross-test physical contradictions (`Fineness vs %R,80 & Strength`, `Strength_Early vs Strength_28D`) in `#anomaly_banner` without silently excluding rows.
 
 ### Promotion Gating
-To be promoted as an active decision-support model over the historical/recent baseline:
+To qualify a model for promotion over the historical/recent baseline (`rolling_evaluation` metrics):
 1. **Expanding Folds**: Must be evaluated across >= 3 chronological out-of-time folds without future lookahead.
 2. **Win Rate**: The model must outperform the baseline in >= 75% of evaluated folds.
 3. **Accuracy Margin**: The model must demonstrate an aggregate out-of-time MAE reduction of >= 5% compared to the recent-mean baseline.
 4. **Correlation**: Must achieve aggregate out-of-time R^2 > 0.25 across the rolling folds.
-5. **Honest Reporting**: The dashboard reports rolling out-of-time metrics for the selected prediction policy. When the model is not promoted, it shows `recent_mean` metrics and never labels rejected model scores as baseline scores.
+5. **Honest Reporting**: The dashboard displays XGBoost rolling out-of-time `r2` and `rmse`, alongside `modelBeatsRecentBaseline`, `confidenceLabel`, and active `trainingWarnings` whenever the training window exhibits negative Blaine correlation or flat-band 28D variance.
 
 ---
 

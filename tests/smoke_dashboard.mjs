@@ -150,15 +150,18 @@ try {
   if (new URL(page.url()).hash !== "#ai" || await page.getAttribute("#tabBtnAI", "aria-selected") !== "true") {
     throw new Error("Strength estimate tab did not update URL and selected state");
   }
-  if (!await page.textContent("#opt_res_strength").then((text) => text.includes("MPa"))) {
-    throw new Error("Recent average was not shown before entering test values");
+  const r2Text = (await page.locator("#modelR2").textContent()) || "";
+  if (!r2Text.startsWith("XGBoost R²:")) {
+    throw new Error(`Expected #modelR2 to start with "XGBoost R²:", got: ${r2Text}`);
+  }
+  if (await page.locator("#modelDataWarning").count() !== 1) {
+    throw new Error("Expected #modelDataWarning to exist in the DOM");
   }
   for (const [id, value] of Object.entries({
     opt_CaO: "65", opt_SiO2: "21.5", opt_Al2O3: "5.5", opt_Fe2O3: "3.5",
     opt_MgO: "1.5", opt_SO3: "0.8", opt_Strength_Early: "24", opt_Fineness: "3800",
   })) await page.fill(`#${id}`, value);
   await page.waitForFunction(() =>
-    document.getElementById("opt_res_strength").textContent.includes("MPa") &&
     document.getElementById("opt_res_model_strength").textContent.includes("MPa"),
     { timeout: 30_000 },
   );

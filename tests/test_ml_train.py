@@ -27,13 +27,52 @@ def models_and_meta():
 
 class TestModelTraining:
     def test_displayed_metrics_are_from_the_same_rolling_policy_as_promotion(self):
+        from ml_train import select_validation_frame
         df = load_and_prepare()
         _, meta = train_all_models(df)
-        report = rolling_evaluation(df, "OPC", folds=3, bootstrap_samples=2)
-        source = "xgboost" if meta["OPC"]["modelBeatsRecentBaseline"] else "recent_mean"
+        eval_df = select_validation_frame(df, "OPC")
+        report = rolling_evaluation(eval_df, "OPC", folds=3, bootstrap_samples=2)
 
-        assert meta["OPC"]["r2"] == round(report["models"][source]["r2"], 3)
-        assert meta["OPC"]["rmse"] == round(report["models"][source]["rmse"], 2)
+        assert meta["OPC"]["r2"] == round(report["models"]["xgboost"]["r2"], 3)
+        assert meta["OPC"]["rmse"] == round(report["models"]["xgboost"]["rmse"], 2)
+
+    @pytest.mark.private_data
+    def test_live_dataset_uses_new_data_validation_window(self):
+        from ml_train import NEW_DATA_MIN_YEAR, select_validation_frame
+        df = load_and_prepare()
+        eval_df = select_validation_frame(df, "OPC")
+        assert int(eval_df["Year"].min()) >= NEW_DATA_MIN_YEAR
+        _, meta = train_all_models(df)
+        assert meta["OPC"]["rmse"] < 1.0  # 2025-2026 new-data RMSE (~0.64 MPa)
+
+    def test_training_warnings_detect_negative_blaine_and_constant_series(self):
+        from ml_train import detect_training_window_warnings
+        dates = pd.date_range("2026-01-01", periods=40, freq="D")
+        inv_rows = [
+            {
+                "Date_str": d.strftime("%Y-%m-%d"),
+                "Fineness": 3300.0 + i * 20.0,
+                "Strength_Early": 25.0,
+                "Strength_28D": 47.0 - i * 0.08,
+            }
+            for i, d in enumerate(dates)
+        ]
+        warnings = detect_training_window_warnings(pd.DataFrame(inv_rows), "OPC")
+        assert any("Blaine" in w and "negative" in w.lower() for w in warnings)
+        assert all("nan" not in w.lower() for w in warnings)
+
+        const_rows = [
+            {
+                "Date_str": d.strftime("%Y-%m-%d"),
+                "Fineness": 3350.0,
+                "Strength_Early": 25.0,
+                "Strength_28D": 46.5,
+            }
+            for d in dates
+        ]
+        const_warnings = detect_training_window_warnings(pd.DataFrame(const_rows), "OPC")
+        assert any("std = 0.00 MPa" in w for w in const_warnings)
+        assert all("nan" not in w.lower() for w in const_warnings)
 
     def test_published_model_learns_newest_completed_results(self):
         dates = pd.date_range("2026-01-01", periods=500, freq="D")

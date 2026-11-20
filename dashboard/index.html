@@ -389,6 +389,7 @@
                         <span id="modelConfidence" style="flex-basis: 100%; color: var(--text-secondary);">--</span>
                         <span id="modelTrainInfo" style="flex-basis: 100%; color: var(--text-muted); font-size: 0.72rem;">--</span>
                     </div>
+                    <div id="modelDataWarning" class="advice-card" style="display: none; margin-bottom: 0.75rem; border-color: var(--status-warning); color: var(--status-warning); font-size: 0.8rem;"></div>
 
                     <div style="margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.6rem;">
                         <label for="predictCementType" style="font-weight: 600;">Cement Type</label>
@@ -450,13 +451,8 @@
                     </div>
 
                     <!-- Predictions and Actual Results -->
-                    <div id="predictionResult" class="prediction-result">
-                        <span class="label">Recent 28-day average</span>
-                        <span class="value" id="opt_res_strength" aria-live="polite">--</span>
-                    </div>
-
-                    <div id="modelPredictionResult" class="prediction-result prediction-result--model">
-                        <span class="label">XGBoost estimate <small>Experimental · uses entered tests</small></span>
+                    <div id="modelPredictionResult" class="prediction-result">
+                        <span class="label">XGBoost 28-Day Estimate <small>Uses entered tests</small></span>
                         <span class="value" id="opt_res_model_strength" aria-live="polite">--</span>
                     </div>
 
@@ -939,6 +935,6 @@
         </main>
     </div>
 
-    <script src="script.js?v=19"></script>
+    <script src="script.js?v=21"></script>
 </body>
 </html>

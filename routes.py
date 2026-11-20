@@ -188,30 +188,9 @@ async def predict(body: PredictRequest):
         ml_meta = snapshot.data_cache.get("ml", {}).get(c_type, {})
 
         if c_type not in snapshot.xgb_models or not ml_meta.get("hasModel", False):
-            # Fall back to recentAverage baseline if trained model is absent
-            if ml_meta.get("recentAverage") is not None:
-                pred = float(ml_meta["recentAverage"])
-                typesafe = {
-                    "enabled": False,
-                    "safe_to_show": None,
-                    "probability": None,
-                    "status": "not_reviewed",
-                }
-                return {
-                    "prediction": round(pred, 2),
-                    "prediction_source": "recent_mean",
-                    "predictionSource": "recent_mean",
-                    "recentAverage": round(pred, 2),
-                    "mlPrediction": None,
-                    "confidence": ml_meta.get("confidence", "insufficient_evidence"),
-                    "confidenceLabel": ml_meta.get("confidenceLabel", "Recent baseline guidance"),
-                    "r2": ml_meta.get("r2"),
-                    "rmse": ml_meta.get("rmse"),
-                    "typesafe": typesafe,
-                }
             raise HTTPException(
                 status_code=400,
-                detail=f"No model or baseline for '{c_type}' ({ml_meta.get('trainSamples', 0)} training rows)",
+                detail=f"No trained model for '{c_type}' ({ml_meta.get('trainSamples', 0)} training rows)",
             )
 
         model = snapshot.xgb_models[c_type]
@@ -225,36 +204,23 @@ async def predict(body: PredictRequest):
         pred_df = pd.DataFrame([features_val], columns=ML_FEATURES)
         ml_prediction = float(model.predict(pred_df)[0])
 
-        use_recent_baseline = not ml_meta.get("modelBeatsRecentBaseline", False)
-        pred = float(ml_meta["recentAverage"]) if use_recent_baseline and ml_meta.get("recentAverage") is not None else ml_prediction
-        prediction_source = "recent_mean" if use_recent_baseline else "xgboost"
-        confidence_label = (
-            "Recent baseline guidance — ML confidence low"
-            if use_recent_baseline
-            else ml_meta["confidenceLabel"]
-        )
+        pred = ml_prediction
+        prediction_source = "xgboost"
+        confidence_label = ml_meta["confidenceLabel"]
 
-        typesafe = {
-            "enabled": False,
-            "safe_to_show": None,
-            "probability": None,
-            "status": "not_reviewed",
-        }
-        if not use_recent_baseline:
-            typesafe = await _typesafe_call(
-                assess_prediction,
-                c_type,
-                pred,
-                ml_meta["confidence"],
-                ml_meta["r2"],
-                ml_meta["rmse"],
-            )
+        typesafe = await _typesafe_call(
+            assess_prediction,
+            c_type,
+            pred,
+            ml_meta["confidence"],
+            ml_meta["r2"],
+            ml_meta["rmse"],
+        )
 
         return {
             "prediction": round(pred, 2),
             "prediction_source": prediction_source,
             "predictionSource": prediction_source,
-            "recentAverage": round(float(ml_meta["recentAverage"]), 2) if ml_meta.get("recentAverage") is not None else None,
             "mlPrediction": round(ml_prediction, 2),
             "confidence": ml_meta["confidence"],
             "confidenceLabel": confidence_label,

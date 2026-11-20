@@ -24,8 +24,70 @@ ML_FEATURES = [
 ]
 
 MIN_TRAIN_SAMPLES = 100
+NEW_DATA_MIN_YEAR = 2025
+MIN_RECENT_EVAL_SAMPLES = 180
 PREDICTIVE_R2 = 0.50
 EXPLORATORY_R2 = 0.25
+
+
+def select_validation_frame(
+    df: pd.DataFrame,
+    cement_type: str,
+    min_rows: int = MIN_RECENT_EVAL_SAMPLES,
+) -> pd.DataFrame:
+    """Select the new-data validation frame (Year >= 2025) when enough complete rows exist."""
+    if "Year" in df.columns:
+        recent = df[df["Year"] >= NEW_DATA_MIN_YEAR]
+        recent_sub = ml_training_frame(recent, cement_type)
+        required_cols = ML_FEATURES + ["Strength_28D", "Date_str"]
+        if all(col in recent_sub.columns for col in required_cols):
+            if len(recent_sub[required_cols].dropna()) >= min_rows:
+                return recent
+    return df
+
+
+def detect_training_window_warnings(train_win: pd.DataFrame, cement_type: str) -> list[str]:
+    """Detect physical correlation or variance distortions in the active training window."""
+    if len(train_win) < 30:
+        return []
+
+    if "Date_str" in train_win.columns and not train_win["Date_str"].dropna().empty:
+        d_min = str(train_win["Date_str"].min())
+        d_max = str(train_win["Date_str"].max())
+    else:
+        d_min = d_max = "recent window"
+
+    warnings: list[str] = []
+
+    if "Fineness" in train_win.columns and "Strength_28D" in train_win.columns:
+        fin_std = float(train_win["Fineness"].std())
+        s28_std = float(train_win["Strength_28D"].std())
+        if pd.notna(fin_std) and pd.notna(s28_std) and fin_std > 0 and s28_std > 0:
+            r_fin = float(train_win["Fineness"].corr(train_win["Strength_28D"]))
+            if pd.notna(r_fin) and r_fin < -0.15:
+                warnings.append(
+                    f"Negative Blaine vs. 28D strength correlation (r = {r_fin:.2f}) in active {cement_type} training window ({d_min} → {d_max}); check top warning banner for suspect Blaine or strength entries."
+                )
+
+    if "Strength_28D" in train_win.columns:
+        s28_std = float(train_win["Strength_28D"].std())
+        if pd.notna(s28_std) and s28_std < 0.55:
+            warnings.append(
+                f"Low 28D strength variation (std = {s28_std:.2f} MPa) in active {cement_type} training window ({d_min} → {d_max}); check Excel sheets for flat-band 28D entries."
+            )
+        if "Strength_Early" in train_win.columns and pd.notna(s28_std) and s28_std > 0:
+            s2_std = float(train_win["Strength_Early"].std())
+            r_early = (
+                float(train_win["Strength_Early"].corr(train_win["Strength_28D"]))
+                if pd.notna(s2_std) and s2_std > 0
+                else None
+            )
+            if r_early is not None and pd.notna(r_early) and abs(r_early) < 0.10:
+                warnings.append(
+                    f"Weak 2D-to-28D strength correlation (r = {r_early:.2f}) in active {cement_type} training window ({d_min} → {d_max}); check Excel sheets for decoupled 2D/28D entries."
+                )
+
+    return warnings
 
 
 def select_model_training_window(frame: pd.DataFrame) -> pd.DataFrame:
@@ -79,6 +141,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
         recent_average = None
         model_train_samples = 0
         model_date_min = model_date_max = None
+        training_warnings: list[str] = []
         if not df_ml.empty and "Date_str" in df_ml.columns:
             df_ml = df_ml.sort_values("Date_str").reset_index(drop=True)
             valid_dates = df_ml["Date_str"].dropna()
@@ -89,7 +152,8 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
 
         if len(df_ml) >= MIN_TRAIN_SAMPLES:
             # Multi-fold out-of-time rolling evaluation establishes promotion decision
-            eval_report = rolling_evaluation(df, c_type, folds=3, bootstrap_samples=50)
+            eval_df = select_validation_frame(df, c_type)
+            eval_report = rolling_evaluation(eval_df, c_type, folds=3, bootstrap_samples=50)
             promo_decision = eval_report.get("promotionDecision", {})
             model_beats_baseline = bool(promo_decision.get("promoted", False))
 
@@ -140,6 +204,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
                 baseline_rmse = float(_rmse_fn(y_test, y_base))
 
                 final_train = select_model_training_window(df_ml)
+                training_warnings = detect_training_window_warnings(final_train, c_type)
                 model.fit(final_train[ML_FEATURES], final_train["Strength_28D"])
                 models[c_type] = model
                 model_train_samples = len(final_train)
@@ -156,20 +221,15 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             print(f"[{c_type}] Not enough 28-day records to train ({len(df_ml)} rows).")
 
         evaluated_models = eval_report.get("models", {})
-        rolling_baseline = evaluated_models.get("recent_mean")
         rolling_model = evaluated_models.get("xgboost")
-        if baseline_mae is None or rolling_baseline is None:
+        if c_type not in models or rolling_model is None:
             confidence = "insufficient_evidence"
             reported_r2 = None
             reported_rmse = None
-        elif model_beats_baseline:
+        else:
             confidence = model_confidence(rolling_model["r2"])
             reported_r2 = round(rolling_model["r2"], 3)
             reported_rmse = round(rolling_model["rmse"], 2)
-        else:
-            confidence = "chemistry_only"
-            reported_r2 = round(rolling_baseline["r2"], 3)
-            reported_rmse = round(rolling_baseline["rmse"], 2)
 
         ml_data[c_type] = {
             "r2": reported_r2,
@@ -187,6 +247,7 @@ def train_all_models(df: pd.DataFrame) -> tuple[dict[str, xgb.XGBRegressor], dic
             "trainSamples": int(len(df_ml)),
             "modelTrainSamples": model_train_samples,
             "modelDateRange": {"min": model_date_min, "max": model_date_max},
+            "trainingWarnings": training_warnings,
             "targetSourceCounts": {
                 str(source): int(count)
                 for source, count in df_ml["Strength_28D_Source"].value_counts().items()

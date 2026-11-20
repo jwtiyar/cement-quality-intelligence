@@ -31,11 +31,125 @@ ANOMALY_BOUNDS = {
     "CaO": (55, 70),
     "MgO": (0, 6),
     "SO3": (0.5, 4.5),
-    "Strength_28D": (20, 80),
-    "Fineness": (2000, 6000),
     "C3S": (30, 80),
     "C3A": (0, 15),
 }
+
+CEMENT_ANOMALY_BOUNDS: dict[str, dict[str, tuple[float, float]]] = {
+    "OPC": {
+        "Fineness": (3000, 3750),
+        "Strength_Early": (20.0, 29.0),
+        "Strength_28D": (42.0, 54.0),
+        "Residue_80": (0.1, 3.0),
+    },
+    "SRC": {
+        "Fineness": (2950, 3750),
+        "Strength_Early": (20.0, 28.5),
+        "Strength_28D": (42.0, 54.0),
+        "Residue_80": (0.1, 2.8),
+    },
+    "SBC": {
+        "Fineness": (3750, 4750),
+        "Strength_Early": (25.0, 35.0),
+        "Strength_28D": (48.0, 65.0),
+        "Residue_80": (0.05, 1.0),
+    },
+}
+
+
+def detect_lab_anomalies(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Detect global oxide bounds, cement-specific bounds, and cross-test contradictions."""
+    if df is None or df.empty:
+        return []
+
+    anomalies: list[dict[str, Any]] = []
+
+    for param, (low, high) in ANOMALY_BOUNDS.items():
+        if param in df.columns:
+            s_numeric = pd.to_numeric(df[param], errors="coerce")
+            mask = s_numeric.notna() & ((s_numeric < low) | (s_numeric > high))
+            for idx, row in df[mask].iterrows():
+                anomalies.append({
+                    "Date": str(row.get("Date_str", "")),
+                    "Type": str(row.get("Cement_Type", "Unknown")),
+                    "Parameter": param,
+                    "Value": round(float(s_numeric.loc[idx]), 2),
+                    "Expected": f"{low} - {high}",
+                })
+
+    fallback_bounds: dict[str, tuple[float, float]] = {
+        "Fineness": (2000, 6000),
+        "Strength_28D": (20, 80),
+    }
+    if "Cement_Type" in df.columns:
+        type_series = df["Cement_Type"].fillna("Unknown").astype(str)
+        unique_types = list(type_series.unique())
+    else:
+        type_series = pd.Series(["Unknown"] * len(df), index=df.index)
+        unique_types = ["Unknown"]
+
+    for c_type in unique_types:
+        bounds = CEMENT_ANOMALY_BOUNDS.get(c_type, fallback_bounds)
+        type_mask = type_series == c_type
+        for param, (low, high) in bounds.items():
+            if param in df.columns:
+                s_numeric = pd.to_numeric(df[param], errors="coerce")
+                mask = type_mask & s_numeric.notna() & ((s_numeric < low) | (s_numeric > high))
+                for idx, row in df[mask].iterrows():
+                    anomalies.append({
+                        "Date": str(row.get("Date_str", "")),
+                        "Type": str(row.get("Cement_Type", "Unknown")),
+                        "Parameter": param,
+                        "Value": round(float(s_numeric.loc[idx]), 2),
+                        "Expected": f"{low} - {high}",
+                    })
+
+    fin_s = pd.to_numeric(df["Fineness"], errors="coerce") if "Fineness" in df.columns else pd.Series(np.nan, index=df.index)
+    r80_s = pd.to_numeric(df["Residue_80"], errors="coerce") if "Residue_80" in df.columns else pd.Series(np.nan, index=df.index)
+    s2_s = pd.to_numeric(df["Strength_Early"], errors="coerce") if "Strength_Early" in df.columns else pd.Series(np.nan, index=df.index)
+    s28_s = pd.to_numeric(df["Strength_28D"], errors="coerce") if "Strength_28D" in df.columns else pd.Series(np.nan, index=df.index)
+
+    low_s28 = s28_s.notna() & (s28_s < 45.6)
+    low_s2 = s2_s.notna() & (s2_s < 24.5)
+    contradiction_a = (
+        type_series.isin(["OPC", "SRC"])
+        & fin_s.notna() & (fin_s > 3600)
+        & r80_s.notna() & (r80_s >= 1.0)
+        & (low_s28 | low_s2)
+    )
+    for idx, row in df[contradiction_a].iterrows():
+        fin = float(fin_s.loc[idx])
+        r80 = float(r80_s.loc[idx])
+        s28_raw = s28_s.loc[idx]
+        s2_raw = s2_s.loc[idx]
+        strength_parts = []
+        if pd.notna(s2_raw):
+            strength_parts.append(f"2D {float(s2_raw):.1f}")
+        if pd.notna(s28_raw):
+            strength_parts.append(f"28D {float(s28_raw):.1f}")
+        strength_str = f"{' / '.join(strength_parts)} MPa" if strength_parts else "strength n/a"
+        anomalies.append({
+            "Date": str(row.get("Date_str", "")),
+            "Type": str(row.get("Cement_Type", "Unknown")),
+            "Parameter": "Fineness vs %R,80 & Strength",
+            "Value": f"Blaine {fin:.0f}, %R80 {r80:.1f}%, {strength_str}",
+            "Expected": "Finer grind (>3600) should not have coarse %R,80 >= 1.0% & low strength",
+        })
+
+    contradiction_b = s2_s.notna() & s28_s.notna() & (s2_s >= s28_s)
+    for idx, row in df[contradiction_b].iterrows():
+        s2 = float(s2_s.loc[idx])
+        s28 = float(s28_s.loc[idx])
+        anomalies.append({
+            "Date": str(row.get("Date_str", "")),
+            "Type": str(row.get("Cement_Type", "Unknown")),
+            "Parameter": "Strength_Early vs Strength_28D",
+            "Value": f"2D {s2:.1f} >= 28D {s28:.1f} MPa",
+            "Expected": "2D strength < 28D strength",
+        })
+
+    anomalies.sort(key=lambda item: str(item.get("Date", "")), reverse=True)
+    return anomalies
 
 
 @dataclass(frozen=True)
@@ -319,20 +433,7 @@ def _build_cache_and_snapshot(
 
     strength_28_count = int(df["Strength_28D"].notna().sum())
 
-    anomalies = []
-    for param, (low, high) in ANOMALY_BOUNDS.items():
-        if param in df.columns:
-            s_numeric = pd.to_numeric(df[param], errors="coerce")
-            mask = s_numeric.notna() & ((s_numeric < low) | (s_numeric > high))
-            outliers = df[mask]
-            for _, row in outliers.iterrows():
-                anomalies.append({
-                    "Date": str(row["Date_str"]),
-                    "Type": str(row.get("Cement_Type", "Unknown")),
-                    "Parameter": param,
-                    "Value": round(float(row[param]), 2),
-                    "Expected": f"{low} - {high}",
-                })
+    anomalies = detect_lab_anomalies(df)
 
     latest_rec_date = str(df["Date_str"].dropna().max()) if "Date_str" in df.columns and not df["Date_str"].dropna().empty else None
 
@@ -557,6 +658,8 @@ async def refresh_dataset_transactional(
         def stage():
             try:
                 df_new, models_new, ml_data_new = _stage_refresh_sync(staging_csv, allow_deletions, active_csv)
+                if abandoned.is_set():
+                    raise RuntimeError("Refresh staging abandoned after timeout")
                 candidate = _build_cache_and_snapshot(
                     df=df_new,
                     csv_path=staging_csv,
@@ -569,6 +672,8 @@ async def refresh_dataset_transactional(
                         "records": len(df_new),
                     },
                 )
+                if abandoned.is_set():
+                    raise RuntimeError("Refresh staging abandoned after timeout")
                 write_dataset_summary_to_file(df_new, staged_summary, refresh_meta=candidate.refresh_meta)
                 rag_index.rebuild_index(output_path=staged_index, summary_path=staged_summary)
                 for path in (summary_path, rag_index.INDEX_PATH):

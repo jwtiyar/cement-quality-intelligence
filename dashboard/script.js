@@ -320,16 +320,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const textDiv = document.getElementById('anomaly_text');
             anomalyBanner.style.display = 'block';
             
+            const renderItem = (a) => `<li style="margin-bottom: 0.3rem;"><strong>${escapeHtml(String(a.Date))} (${escapeHtml(String(a.Type))}):</strong> ${escapeHtml(String(a.Parameter))} is logged as <strong>${escapeHtml(String(a.Value))}</strong> (Expected: ${escapeHtml(String(a.Expected))})</li>`;
             let msg = `The system automatically scanned all Excel sheets during startup and found <strong>${dashboardData.anomalies.length}</strong> suspiciously large or small numbers (likely typos):<br><br><ul style="margin: 0; padding-left: 1.5rem;">`;
-            const samples = dashboardData.anomalies.slice(0, 5);
-            samples.forEach(a => {
-                msg += `<li style="margin-bottom: 0.3rem;"><strong>${escapeHtml(a.Date)} (${escapeHtml(a.Type)}):</strong> ${escapeHtml(a.Parameter)} is logged as <strong>${escapeHtml(a.Value)}</strong> (Normal range is ${escapeHtml(a.Expected)})</li>`;
-            });
+            msg += dashboardData.anomalies.slice(0, 5).map(renderItem).join('');
             msg += `</ul>`;
             if (dashboardData.anomalies.length > 5) {
-                msg += `<br><em>...and ${dashboardData.anomalies.length - 5} more.</em>`;
+                msg += `<details style="margin-top: 0.4rem;"><summary style="cursor: pointer; font-weight: 600;">Show all ${dashboardData.anomalies.length} warnings (${dashboardData.anomalies.length - 5} more)</summary><ul style="margin: 0.4rem 0 0; padding-left: 1.5rem;">${dashboardData.anomalies.slice(5).map(renderItem).join('')}</ul></details>`;
             }
-            msg += `<br>Please check these dates in your Excel sheets, fix the typos, and click <strong>"Sync Live Excel Data"</strong> to clear this warning.`;
+            msg += `<br>Please check these dates in your Excel sheets, fix the typos, and click <strong>"Refresh Data"</strong> to clear this warning.`;
             textDiv.innerHTML = msg;
         } else if (anomalyBanner) {
             anomalyBanner.style.display = 'none';
@@ -1001,8 +999,6 @@ function setupMLPredictor() {
         document.getElementById('opt_res_LSF').innerText = '--';
         document.getElementById('opt_res_SM').innerText = '--';
         document.getElementById('opt_res_AM').innerText = '--';
-        const recentAverage = dashboardData.ml[cTypeSelect.value]?.recentAverage;
-        document.getElementById('opt_res_strength').innerText = recentAverage == null ? '--' : `${recentAverage.toFixed(1)} MPa`;
         document.getElementById('opt_res_model_strength').innerText = '--';
         const adviceEl = document.getElementById('opt_advice');
         if (adviceEl) {
@@ -1018,7 +1014,7 @@ function setupMLPredictor() {
         const confEl = document.getElementById('modelConfidence');
         const trainEl = document.getElementById('modelTrainInfo');
 
-        const validationSource = modelData.modelBeatsRecentBaseline ? 'Validated model' : 'Recent average';
+        const validationSource = 'XGBoost';
         r2El.innerText = `${validationSource} R²: ${modelData.r2 == null ? 'n/a' : `${(modelData.r2 * 100).toFixed(1)}%`}`;
         rmseEl.innerText = `${validationSource} RMSE: ${modelData.rmse == null ? 'n/a' : `${modelData.rmse} MPa`}`;
 
@@ -1035,6 +1031,19 @@ function setupMLPredictor() {
             const dr = modelData.modelDateRange || {};
             const range = dr.min && dr.max ? `${dr.min} → ${dr.max}` : 'n/a';
             trainEl.innerText = `XGBoost: ${modelData.modelTrainSamples || 0} completed 28-day tests · ${range}`;
+        }
+
+        const warnEl = document.getElementById('modelDataWarning');
+        if (warnEl) {
+            const warnings = Array.isArray(modelData?.trainingWarnings) ? modelData.trainingWarnings : [];
+            if (warnings.length > 0) {
+                warnEl.style.display = 'block';
+                warnEl.innerHTML = '<strong>Lab Training Data Warning:</strong><br>' +
+                    warnings.map(w => `• ${escapeHtml(String(w))}`).join('<br>');
+            } else {
+                warnEl.style.display = 'none';
+                warnEl.innerHTML = '';
+            }
         }
 
         if (recordData) {
@@ -1175,8 +1184,6 @@ function setupMLPredictor() {
             document.getElementById('opt_res_LSF').innerText = '--';
             document.getElementById('opt_res_SM').innerText = '--';
             document.getElementById('opt_res_AM').innerText = '--';
-            const recentAverage = dashboardData.ml[cType]?.recentAverage;
-            document.getElementById('opt_res_strength').innerText = recentAverage == null ? '--' : `${recentAverage.toFixed(1)} MPa`;
             document.getElementById('opt_res_model_strength').innerText = '--';
             document.getElementById('expectedDateBox').style.display = 'none';
             const adviceEl = document.getElementById('opt_advice');
@@ -1221,7 +1228,6 @@ function setupMLPredictor() {
             };
 
             const modelInputsComplete = optInputs.every(id => document.getElementById(id).value !== '');
-            let strengthHtml = modelMeta.recentAverage == null ? '--' : `${modelMeta.recentAverage.toFixed(1)} MPa`;
             let modelHtml = modelMeta.hasModel ? 'Enter all eight tests' : 'Unavailable';
             let advice = `<strong>Chemistry Engine:</strong><br>${chem.advice}`;
 
@@ -1235,7 +1241,6 @@ function setupMLPredictor() {
                 const result = await res.json();
                 if (revision !== predictionRevision) return;
                 if (result.prediction !== undefined) {
-                    strengthHtml = result.recentAverage == null ? '--' : `${result.recentAverage.toFixed(1)} MPa`;
                     const decision = result.typesafe || {};
                     const normalizedReview = {
                         enabled: Boolean(decision.enabled),
@@ -1246,7 +1251,7 @@ function setupMLPredictor() {
                     latestPredictionContext = {
                         cement_type: cType,
                         prediction: result.prediction,
-                        prediction_source: result.prediction_source || result.predictionSource || (result.confidence === 'chemistry_only' ? 'recent_mean' : 'xgboost'),
+                        prediction_source: result.prediction_source || result.predictionSource || 'xgboost',
                         confidence: result.confidence,
                         confidence_label: result.confidenceLabel,
                         r2: result.r2,
@@ -1258,13 +1263,10 @@ function setupMLPredictor() {
                         advice += `<br><br><strong>TypeSafe review required before using this estimate.</strong>`;
                         document.getElementById('expectedDateBox').style.display = 'none';
                     } else {
-                        modelHtml = result.mlPrediction == null ? 'Unavailable' : `${result.mlPrediction.toFixed(1)} MPa`;
-                        advice += `<br><br><strong>${result.confidenceLabel}</strong>`;
-                        if (result.predictionSource === 'recent_mean') {
-                            advice += `<br>The model estimate is experimental. Compare it with the recent average; neither is a lab result.`;
-                        } else {
-                            advice += `<br>The model estimate is based on the entered tests.`;
-                        }
+                        const estVal = result.mlPrediction ?? result.prediction;
+                        modelHtml = estVal == null ? 'Unavailable' : `${estVal.toFixed(1)} MPa`;
+                        advice += `<br><br><strong>${escapeHtml(String(result.confidenceLabel || ''))}</strong>`;
+                        advice += `<br>The model estimate is based on the entered tests.`;
                         if (normalizedReview.status === 'approved') {
                             advice += `<br><strong>TypeSafe status:</strong> Approved (${(normalizedReview.probability * 100).toFixed(0)}%)`;
                         } else {
@@ -1321,7 +1323,6 @@ function setupMLPredictor() {
                 }
             }
 
-            document.getElementById('opt_res_strength').innerText = strengthHtml;
             document.getElementById('opt_res_model_strength').innerText = modelHtml;
             document.getElementById('opt_advice').innerHTML = advice;
         } catch (e) {

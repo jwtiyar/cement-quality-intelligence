@@ -234,10 +234,11 @@ class TestPredictEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert "prediction" in body
-        assert body["predictionSource"] == "recent_mean"
-        assert isinstance(body["recentAverage"], (int, float))
+        assert body["predictionSource"] == "xgboost"
+        assert body["prediction_source"] == "xgboost"
+        assert "recentAverage" not in body
         assert isinstance(body["mlPrediction"], (int, float))
-        assert body["prediction"] == body["recentAverage"]
+        assert body["prediction"] == body["mlPrediction"]
         assert "confidence" in body
         assert body["typesafe"]["enabled"] is False
 
@@ -536,3 +537,60 @@ class TestRagRebuildEndpoint:
                 assert not state._refresh_lock.locked()
 
         asyncio.run(exercise())
+
+
+class TestLabAnomalyDetection:
+    def test_detects_cement_specific_blaine_and_cross_test_contradictions(self):
+        import pandas as pd
+        import state
+
+        df = pd.DataFrame([
+            {
+                "Date_str": "2026-04-01",
+                "Cement_Type": "OPC",
+                "SiO2": 19.69, "Al2O3": 5.0, "Fe2O3": 3.5, "CaO": 63.66, "MgO": 2.5, "SO3": 2.4,
+                "Fineness": 4109.0,
+                "Residue_80": 1.0,
+                "Strength_Early": 24.4,
+                "Strength_28D": 45.1,
+            },
+            {
+                "Date_str": "2026-04-02",
+                "Cement_Type": "SBC",
+                "SiO2": 20.0, "Al2O3": 4.8, "Fe2O3": 3.4, "CaO": 62.5, "MgO": 2.2, "SO3": 2.3,
+                "Fineness": 4109.0,
+                "Residue_80": 0.2,
+                "Strength_Early": 30.5,
+                "Strength_28D": 53.4,
+            },
+            {
+                "Date_str": "2026-04-03",
+                "Cement_Type": "SRC",
+                "SiO2": 20.5, "Al2O3": 4.2, "Fe2O3": 4.5, "CaO": 63.0, "MgO": 2.0, "SO3": 2.1,
+                "Fineness": 3300.0,
+                "Residue_80": 0.8,
+                "Strength_Early": 47.0,
+                "Strength_28D": 46.0,
+            },
+        ])
+        anomalies = state.detect_lab_anomalies(df)
+        opc_params = [a["Parameter"] for a in anomalies if a["Type"] == "OPC"]
+        sbc_params = [a["Parameter"] for a in anomalies if a["Type"] == "SBC"]
+        src_params = [a["Parameter"] for a in anomalies if a["Type"] == "SRC"]
+
+        assert "Fineness" in opc_params
+        assert "Fineness vs %R,80 & Strength" in opc_params
+        assert sbc_params == []
+        assert "Strength_Early" in src_params
+        assert "Strength_Early vs Strength_28D" in src_params
+        assert anomalies[0]["Date"] >= anomalies[-1]["Date"]
+
+    def test_detect_lab_anomalies_handles_missing_optional_columns(self):
+        import pandas as pd
+        import state
+
+        df = pd.DataFrame([
+            {"Date_str": "2026-01-01", "Cement_Type": "OPC", "CaO": 63.0, "Fineness": 3350.0}
+        ])
+        assert state.detect_lab_anomalies(df) == []
+
