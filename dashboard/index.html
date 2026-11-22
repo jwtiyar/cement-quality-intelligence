@@ -6,6 +6,7 @@
     <meta name="description" content="Cement laboratory quality intelligence, strength prediction, raw-mix optimization, and technical reference search.">
     <meta name="theme-color" content="#0e1214">
     <title>Cement Quality Intelligence</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23151b1e'/%3E%3Crect x='1.5' y='1.5' width='29' height='29' rx='3' fill='none' stroke='%2348a994' stroke-width='1.5'/%3E%3Ctext x='16' y='20.5' text-anchor='middle' font-family='monospace' font-size='12' font-weight='700' fill='%23e6eded'%3ECQI%3C/text%3E%3C/svg%3E">
     <script>
         (() => {
             const palette = localStorage.getItem('cementPalette') || 'portland';
@@ -15,7 +16,7 @@
             document.documentElement.dataset.themeResolved = dark ? 'dark' : 'light';
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="stylesheet" href="style.css?v=18">
     <script src="vendor/chart.umd.min.js?v=4.6.1"></script>
 </head>
 <body>
@@ -24,17 +25,14 @@
         <header class="app-header">
             <div class="brand-block">
                 <span class="brand-mark" aria-hidden="true">CQI</span>
-                <div>
-                    <h1>Cement Quality Intelligence</h1>
-                    <p>Laboratory Assays • ML Strength Estimation • Raw Mix Solver</p>
-                </div>
+                <h1>Cement Quality Intelligence</h1>
             </div>
             <div class="header-controls">
                 <div class="control-item">
                     <label for="paletteSelector"><span>Palette</span></label>
                     <select id="paletteSelector" class="glass-select" aria-label="Color palette">
                         <option value="portland">Portland Steel</option>
-                        <option value="clinker">Clinker & Meal</option>
+                        <option value="clinker">Clinker &amp; Meal</option>
                         <option value="console">Console Mono</option>
                     </select>
                 </div>
@@ -52,7 +50,7 @@
                         <span id="dataFreshnessText">Data: Loading…</span>
                     </span>
                 </div>
-                <button id="btnSync" class="btn-predict header-action">Refresh Data</button>
+                <button type="button" id="btnSync" class="btn-predict header-action">Refresh Data</button>
             </div>
         </header>
 
@@ -60,16 +58,15 @@
 
         <!-- Anomaly Alert Banner -->
         <div id="anomaly_banner" class="alarm-banner" style="display: none;">
-            <h3>Data Anomaly Warning</h3>
             <div id="anomaly_text" class="alarm-body"></div>
         </div>
 
         <!-- Tab Navigation -->
         <nav class="tabs-container" aria-label="Main sections" role="tablist">
-            <button class="tab-btn is-active" id="tabBtnAnalytics" onclick="switchTab('analytics')" role="tab" aria-selected="true" aria-controls="tabAnalytics">Overview</button>
-            <button class="tab-btn" id="tabBtnAI" onclick="switchTab('ai')" role="tab" aria-selected="false" aria-controls="tabAI">Strength Estimate</button>
-            <button class="tab-btn" id="tabBtnRawMix" onclick="switchTab('rawmix')" role="tab" aria-selected="false" aria-controls="tabRawMix">Raw Mix Solver</button>
-            <button class="tab-btn" id="tabBtnChat" onclick="switchTab('chat')" role="tab" aria-selected="false" aria-controls="tabChat">Plant Assistant</button>
+            <button type="button" class="tab-btn is-active" id="tabBtnAnalytics" onclick="switchTab('analytics')" role="tab" aria-selected="true" aria-controls="tabAnalytics">Overview</button>
+            <button type="button" class="tab-btn" id="tabBtnAI" onclick="switchTab('ai')" role="tab" aria-selected="false" aria-controls="tabAI">Strength Estimate</button>
+            <button type="button" class="tab-btn" id="tabBtnRawMix" onclick="switchTab('rawmix')" role="tab" aria-selected="false" aria-controls="tabRawMix">Raw Mix Solver</button>
+            <button type="button" class="tab-btn" id="tabBtnChat" onclick="switchTab('chat')" role="tab" aria-selected="false" aria-controls="tabChat">Plant Assistant</button>
         </nav>
 
         <main id="mainContent">
@@ -77,94 +74,52 @@
         <!-- Tab 1: Analytics / Overview -->
         <div id="tabAnalytics" class="tab-panel" style="display: block;" role="tabpanel" aria-labelledby="tabBtnAnalytics">
             <!-- Period & Season Filter Toolbar -->
-            <div class="panel" style="margin-bottom: 0.85rem; padding: 0.65rem 0.85rem; display: flex; flex-direction: column; gap: 0.65rem;">
-                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem;">
-                    <!-- Quick Period Buttons -->
-                    <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                        <span style="font-weight: 600; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.2rem;">
-                            Period:
-                        </span>
-                        <button type="button" class="quick-period-btn tab-btn is-active" data-period="all" style="min-height: 27px; padding: 0.15rem 0.65rem; font-size: 0.78rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                            All Time
-                        </button>
-                        <button type="button" class="quick-period-btn tab-btn" data-period="season_spring" style="min-height: 27px; padding: 0.15rem 0.65rem; font-size: 0.78rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                            🌸 Spring
-                        </button>
-                        <button type="button" class="quick-period-btn tab-btn" data-period="season_summer" style="min-height: 27px; padding: 0.15rem 0.65rem; font-size: 0.78rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                            ☀️ Summer
-                        </button>
-                        <button type="button" class="quick-period-btn tab-btn" data-period="season_autumn" style="min-height: 27px; padding: 0.15rem 0.65rem; font-size: 0.78rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                            🍂 Autumn
-                        </button>
-                        <button type="button" class="quick-period-btn tab-btn" data-period="season_winter" style="min-height: 27px; padding: 0.15rem 0.65rem; font-size: 0.78rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                            ❄️ Winter
-                        </button>
-                    </div>
-
-                    <!-- 3-Months & Year Dropdowns -->
-                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                        <div class="selector-wrapper" style="margin: 0; display: flex; align-items: center; gap: 0.3rem;">
-                            <label for="avg3mSelect" style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">3 Months:</label>
-                            <select id="avg3mSelect" class="glass-select" style="min-height: 28px; padding: 0.15rem 0.5rem; font-size: 0.78rem;">
-                                <option value="">Select 3 Months...</option>
-                                <optgroup label="Calendar Quarters">
-                                    <option value="quarter_Q1">Q1 (Jan – Mar)</option>
-                                    <option value="quarter_Q2">Q2 (Apr – Jun)</option>
-                                    <option value="quarter_Q3">Q3 (Jul – Sep)</option>
-                                    <option value="quarter_Q4">Q4 (Oct – Dec)</option>
-                                </optgroup>
-                                <optgroup label="Rolling 3 Months">
-                                    <option value="months_1,2,3">Jan – Mar</option>
-                                    <option value="months_2,3,4">Feb – Apr</option>
-                                    <option value="months_3,4,5">Mar – May</option>
-                                    <option value="months_4,5,6">Apr – Jun</option>
-                                    <option value="months_5,6,7">May – Jul</option>
-                                    <option value="months_6,7,8">Jun – Aug</option>
-                                    <option value="months_7,8,9">Jul – Sep</option>
-                                    <option value="months_8,9,10">Aug – Oct</option>
-                                    <option value="months_9,10,11">Sep – Nov</option>
-                                    <option value="months_10,11,12">Oct – Dec</option>
-                                    <option value="months_11,12,1">Nov – Jan</option>
-                                    <option value="months_12,1,2">Dec – Feb</option>
-                                </optgroup>
-                            </select>
-                        </div>
-
-                        <div class="selector-wrapper" style="margin: 0; display: flex; align-items: center; gap: 0.3rem;">
-                            <label for="avgYearSelect" style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Start year:</label>
-                            <select id="avgYearSelect" class="glass-select" style="min-height: 28px; padding: 0.15rem 0.5rem; font-size: 0.78rem; min-width: 90px;">
-                                <option value="all">All Years</option>
-                            </select>
-                        </div>
-
-                        <button type="button" id="btnToggleSeasonsTable" class="tab-btn" style="min-height: 28px; padding: 0.15rem 0.6rem; font-size: 0.78rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                            📊 Detailed Table
-                        </button>
-                    </div>
+            <div class="panel filter-toolbar">
+                <div class="filter-group-periods">
+                    <span class="filter-label">Period</span>
+                    <button type="button" class="quick-period-btn is-active" data-period="all">All Time</button>
+                    <button type="button" class="quick-period-btn" data-period="season_spring">Spring</button>
+                    <button type="button" class="quick-period-btn" data-period="season_summer">Summer</button>
+                    <button type="button" class="quick-period-btn" data-period="season_autumn">Autumn</button>
+                    <button type="button" class="quick-period-btn" data-period="season_winter">Winter</button>
                 </div>
 
-                <!-- Active Filter Banner -->
-                <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--panel-border); padding-top: 0.4rem; font-size: 0.75rem;">
-                    <div style="display: flex; align-items: center; gap: 0.4rem;">
-                        <span style="color: var(--text-secondary);">Active Period:</span>
-                        <strong id="activePeriodBadge" style="color: var(--accent-strong);">Full Dataset (All Time)</strong>
-                    </div>
-                    <button type="button" id="btnResetAvgPeriod" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.72rem;">
-                        Reset to All Time
-                    </button>
-                </div>
-            </div>
+                <div class="filter-group-selects">
+                    <label for="avg3mSelect" class="filter-label">3M</label>
+                    <select id="avg3mSelect" class="glass-select" aria-label="3-Month window">
+                        <option value="">Select 3 Months...</option>
+                        <optgroup label="Calendar Quarters">
+                            <option value="quarter_Q1">Q1 (Jan – Mar)</option>
+                            <option value="quarter_Q2">Q2 (Apr – Jun)</option>
+                            <option value="quarter_Q3">Q3 (Jul – Sep)</option>
+                            <option value="quarter_Q4">Q4 (Oct – Dec)</option>
+                        </optgroup>
+                        <optgroup label="Rolling 3 Months">
+                            <option value="months_1,2,3">Jan – Mar</option>
+                            <option value="months_2,3,4">Feb – Apr</option>
+                            <option value="months_3,4,5">Mar – May</option>
+                            <option value="months_4,5,6">Apr – Jun</option>
+                            <option value="months_5,6,7">May – Jul</option>
+                            <option value="months_6,7,8">Jun – Aug</option>
+                            <option value="months_7,8,9">Jul – Sep</option>
+                            <option value="months_8,9,10">Aug – Oct</option>
+                            <option value="months_9,10,11">Sep – Nov</option>
+                            <option value="months_10,11,12">Oct – Dec</option>
+                            <option value="months_11,12,1">Nov – Jan</option>
+                            <option value="months_12,1,2">Dec – Feb</option>
+                        </optgroup>
+                    </select>
 
-            <!-- Four Seasons Benchmark Cards (Always Visible side-by-side) -->
-            <div style="margin-bottom: 0.85rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; padding: 0 0.2rem;">
-                    <span style="font-size: 0.75rem; font-weight: 650; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
-                        Seasonal Benchmarks (Click any season to filter averages)
-                    </span>
-                    <span id="seasonsCardsYearBadge" style="font-size: 0.72rem; color: var(--text-muted);">(All Years)</span>
+                    <label for="avgYearSelect" class="filter-label">Year</label>
+                    <select id="avgYearSelect" class="glass-select" aria-label="Start year">
+                        <option value="all">All Years</option>
+                    </select>
                 </div>
-                <div id="seasonalBenchmarkCards" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem;">
-                    <!-- Dynamically populated by renderSeasonalCards() -->
+
+                <div class="filter-group-meta">
+                    <span class="active-period-readout"><span class="filter-label">Active:</span> <strong id="activePeriodBadge">Full Dataset (All Time)</strong></span>
+                    <button type="button" id="btnResetAvgPeriod" class="link-reset">Reset</button>
+                    <button type="button" id="btnToggleSeasonsTable" class="btn-outline" aria-expanded="false">Seasons Table</button>
                 </div>
             </div>
 
@@ -173,7 +128,7 @@
                 <div class="card">
                     <h3>Total Records</h3>
                     <p id="totalRecords" class="value">---</p>
-                    <div id="totalRecordsPeriod" style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.2rem;">All time</div>
+                    <div id="totalRecordsPeriod" class="card-sub">All time</div>
                 </div>
                 <div class="card">
                     <h3>Average 28-Day Strength</h3>
@@ -186,42 +141,45 @@
                 <div class="card">
                     <h3>Coverage Period</h3>
                     <p id="yearsCoverage" class="value">---</p>
-                    <div id="coveragePeriodSub" style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.2rem;">Laboratory historical record</div>
+                    <div id="coveragePeriodSub" class="card-sub">Laboratory historical record</div>
                 </div>
             </div>
 
-            <!-- Seasonal & 3-Month Comparison Drawer -->
-            <div id="seasonalComparisonDrawer" class="panel" style="display: none; margin-bottom: 0.85rem; padding: 0.85rem 1rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.4rem;">
-                    <h3 style="margin: 0; font-size: 0.85rem; font-weight: 650; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
-                        <span>Seasonal & 3-Month Averages Breakdown</span>
-                        <span id="seasonsTableYearBadge" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">(All Years)</span>
-                    </h3>
-                    <span style="font-size: 0.72rem; color: var(--text-secondary);">Click any season row to apply as active period</span>
+            <!-- Four Seasons Benchmark Strip -->
+            <div class="season-strip-wrap">
+                <div class="season-strip-head">
+                    <span>Seasonal Benchmarks</span>
+                    <span id="seasonsCardsYearBadge">(All Years)</span>
                 </div>
-                
-                <div style="overflow-x: auto;">
-                    <table class="report-table" id="seasonalComparisonTable" style="width: 100%; font-size: 0.82rem; border-collapse: collapse;">
+                <div id="seasonalBenchmarkCards" class="season-strip-grid"></div>
+            </div>
+
+            <!-- Seasonal & 3-Month Comparison Drawer -->
+            <div id="seasonalComparisonDrawer" class="panel season-drawer" style="display: none;">
+                <div class="season-drawer-head">
+                    <h3>Seasonal &amp; 3-Month Averages Breakdown <span id="seasonsTableYearBadge" class="col-muted">(All Years)</span></h3>
+                    <span class="drawer-hint">Select any season row to filter</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="report-table" id="seasonalComparisonTable">
                         <thead>
-                            <tr style="background: var(--panel-header);">
-                                <th style="padding: 0.4rem 0.6rem; text-align: left;">Season / Period</th>
-                                <th style="padding: 0.4rem 0.6rem; text-align: left;">Months</th>
-                                <th style="padding: 0.4rem 0.6rem; text-align: right;">Records</th>
-                                <th style="padding: 0.4rem 0.6rem; text-align: center; border-left: 1px solid var(--panel-border);" colspan="4">28-Day Strength (MPa)</th>
-                                <th style="padding: 0.4rem 0.6rem; text-align: center; border-left: 1px solid var(--panel-border);" colspan="4">C₃S (%)</th>
+                            <tr>
+                                <th rowspan="2">Season / Period</th>
+                                <th rowspan="2">Months</th>
+                                <th class="num" rowspan="2">Records</th>
+                                <th class="group-center col-divider" colspan="4">28-Day Strength (MPa)</th>
+                                <th class="group-center col-divider" colspan="4">C₃S (%)</th>
                             </tr>
-                            <tr style="font-size: 0.72rem; color: var(--text-secondary); background: var(--panel-muted);">
-                                <th style="padding: 0.3rem 0.6rem;"></th>
-                                <th style="padding: 0.3rem 0.6rem;"></th>
-                                <th style="padding: 0.3rem 0.6rem;"></th>
-                                <th style="padding: 0.3rem 0.6rem; border-left: 1px solid var(--panel-border); color: #38bdf8; text-align: right;">OPC</th>
-                                <th style="padding: 0.3rem 0.6rem; color: #10b981; text-align: right;">SRC</th>
-                                <th style="padding: 0.3rem 0.6rem; color: #8b5cf6; text-align: right;">SBC</th>
-                                <th style="padding: 0.3rem 0.6rem; color: var(--text-primary); text-align: right; font-weight: 600;">Overall</th>
-                                <th style="padding: 0.3rem 0.6rem; border-left: 1px solid var(--panel-border); color: #38bdf8; text-align: right;">OPC</th>
-                                <th style="padding: 0.3rem 0.6rem; color: #10b981; text-align: right;">SRC</th>
-                                <th style="padding: 0.3rem 0.6rem; color: #8b5cf6; text-align: right;">SBC</th>
-                                <th style="padding: 0.3rem 0.6rem; color: var(--text-primary); text-align: right; font-weight: 600;">Overall</th>
+                            <tr class="report-subhead">
+                                <th class="num col-divider col-opc">OPC</th>
+                                <th class="num col-src">SRC</th>
+                                <th class="num col-sbc">SBC</th>
+                                <th class="num col-overall">Overall</th>
+                                <th class="num col-divider col-opc">OPC</th>
+                                <th class="num col-src">SRC</th>
+                                <th class="num col-sbc">SBC</th>
+                                <th class="num col-overall">Overall</th>
                             </tr>
                         </thead>
                         <tbody id="seasonalComparisonBody">
@@ -246,7 +204,7 @@
                                 <option value="Fineness">Blaine Fineness (cm²/g)</option>
                                 <option value="LSF">Lime Saturation Factor (LSF)</option>
                             </select>
-                            <button id="btnExportCSV" class="btn-predict secondary-action" title="Download the full dataset as CSV">Export CSV</button>
+                            <button type="button" id="btnExportCSV" class="btn-predict secondary-action" title="Download the full dataset as CSV">Export CSV</button>
                         </div>
                     </div>
                     <div class="trend-toolbar">
@@ -259,12 +217,12 @@
                         </div>
                         <div class="trend-offset-wrapper">
                             <label class="trend-offset-label" title="Slightly offsets overlapping curves so SRC and OPC run side-by-side without covering each other">
-                                <input type="checkbox" id="trendOffsetToggle" style="accent-color: var(--accent); cursor: pointer;">
+                                <input type="checkbox" id="trendOffsetToggle">
                                 <span>Separate Overlapping Lines (Offset)</span>
                             </label>
                         </div>
                     </div>
-                    <p id="trendChartSubtitle" class="section-desc" style="display: none;"></p>
+                    <p id="trendChartSubtitle" class="section-desc era-note" style="display: none;"></p>
                     <div class="chart-wrapper">
                         <canvas id="trendChart"></canvas>
                     </div>
@@ -311,14 +269,17 @@
                 <div class="correlation-container panel span-full">
                     <div class="chart-header">
                         <h2>OPC Correlation Matrix</h2>
-                        <select id="corrCementType" aria-label="Cement type for correlation matrix">
+                        <select id="corrCementType" class="glass-select" aria-label="Cement type for correlation matrix">
                             <option value="OPC" selected>OPC</option>
                             <option value="SRC">SRC</option>
                             <option value="SBC">SBC</option>
                         </select>
                     </div>
-                    <p class="section-desc">Pearson linear correlation coefficient (r). +1 indicates direct relationship; -1 indicates inverse relationship.
-                        <br><strong>How to read this:</strong> correlations are weak in absolute terms because the plant operates inside tight quality windows (range restriction) — expect |r| well below 1 even for real effects. C3S hydrates in days and drives early strength; C2S hydrates slowly and matters mostly beyond 28 days. C3S and C2S are mathematically anticoupled by the Bogue equations (r &asymp; -0.96 to -0.99), so treat their rows as one signal, not two independent ones. Switch cement type above — products with different clinker targets (SRC, SBC) legitimately show different signs.</p>
+                    <p class="section-desc">Pearson linear correlation coefficient (r). +1 indicates direct relationship; -1 indicates inverse relationship.</p>
+                    <details class="inline-help">
+                        <summary>How to read this matrix (range restriction &amp; Bogue anticoupling)</summary>
+                        <p class="section-desc">Correlations are weak in absolute terms because the plant operates inside tight quality windows (range restriction) — expect |r| well below 1 even for real effects. C3S hydrates in days and drives early strength; C2S hydrates slowly and matters mostly beyond 28 days. C3S and C2S are mathematically anticoupled by the Bogue equations (r &asymp; -0.96 to -0.99), so treat their rows as one signal, not two independent ones. Switch cement type above — products with different clinker targets (SRC, SBC) legitimately show different signs.</p>
+                    </details>
                     <div class="correlation-grid-wrapper">
                         <table id="correlationTable">
                             <!-- Populated dynamically -->
@@ -327,7 +288,7 @@
                 </div>
 
                 <!-- Fineness Cross-Check (Blaine vs Sieve Residue) -->
-                <div class="correlation-container panel span-full">
+                <div class="chart-container panel span-full">
                     <h2>Fineness Cross-Check — Blaine vs Sieve Residue</h2>
                     <p class="section-desc" id="finAuditDesc">Each dot is one month's median. If both instruments measured the same particle size, the cloud would fall on a downward line (finer grind = more surface = less sieve residue). Color = cement type.</p>
                     <div class="chart-wrapper">
@@ -368,40 +329,38 @@
 
         <!-- Tab 2: Strength Estimation -->
         <div id="tabAI" class="tab-panel" style="display: none;" role="tabpanel" aria-labelledby="tabBtnAI">
-            <div class="dashboard-grid">
+            <div class="dashboard-grid predictor-grid">
                 <!-- AI Predictor Panel -->
                 <div class="predictor-container panel">
                     <h2>28-Day Compressive Strength Estimator</h2>
-                    
-                    <!-- Search Date Block -->
-                    <div class="search-record-block" style="margin-bottom: 1rem; padding-bottom: 0.85rem; border-bottom: 1px solid var(--panel-border);">
-                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                            <label for="searchDate" style="font-weight: 600;">Load Lab Record</label>
-                            <input type="date" id="searchDate" class="glass-select" style="width: 140px; text-align: center;" value="">
+
+                    <div class="predictor-toolbar">
+                        <div class="control-item">
+                            <label for="predictCementType">Cement Type</label>
+                            <select id="predictCementType" class="glass-select">
+                                <option value="OPC">OPC (Ordinary Portland)</option>
+                                <option value="SRC">SRC (Sulfate Resisting)</option>
+                                <option value="SBC">SBC (Slag Blend)</option>
+                            </select>
+                        </div>
+                        <div class="control-item">
+                            <label for="searchDate">Load Lab Record</label>
+                            <input type="date" id="searchDate" class="glass-select" value="">
                             <button type="button" id="btnLoadRecord" class="btn-predict compact-action">Load</button>
                         </div>
-                        <div id="searchFeedback" style="font-size: 0.8rem; margin-top: 0.35rem; color: var(--status-nominal); display: none;"></div>
                     </div>
+                    <div id="searchFeedback" class="search-feedback" style="display: none;"></div>
 
                     <div class="model-stats">
                         <span id="modelR2">R²: --</span>
                         <span id="modelRMSE">RMSE: -- MPa</span>
-                        <span id="modelConfidence" style="flex-basis: 100%; color: var(--text-secondary);">--</span>
-                        <span id="modelTrainInfo" style="flex-basis: 100%; color: var(--text-muted); font-size: 0.72rem;">--</span>
+                        <span id="modelConfidence">--</span>
+                        <span id="modelTrainInfo">--</span>
                     </div>
-                    <div id="modelDataWarning" class="advice-card" style="display: none; margin-bottom: 0.75rem; border-color: var(--status-warning); color: var(--status-warning); font-size: 0.8rem;"></div>
-
-                    <div style="margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.6rem;">
-                        <label for="predictCementType" style="font-weight: 600;">Cement Type</label>
-                        <select id="predictCementType" class="glass-select">
-                            <option value="OPC">OPC (Ordinary Portland)</option>
-                            <option value="SRC">SRC (Sulfate Resisting)</option>
-                            <option value="SBC">SBC (Slag Blend)</option>
-                        </select>
-                    </div>
+                    <div id="modelDataWarning" class="advice-card model-warning" style="display: none;"></div>
 
                     <!-- Inputs Grid -->
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem;">
+                    <div class="inputs-grid-4">
                         <div class="form-group">
                             <label for="opt_CaO">CaO (%)</label>
                             <input type="number" id="opt_CaO" step="0.01">
@@ -437,35 +396,37 @@
                     </div>
 
                     <!-- Calculated Cement Chemistry Grid -->
-                    <div style="margin-top: 1rem;">
-                        <h4 style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem;">Calculated Cement Chemistry & Moduli</h4>
-                        <div class="chem-grid">
-                            <div class="chem-chip"><div class="chem-label">C₃S</div><div class="chem-val"><span id="opt_res_C3S">--</span>%</div></div>
-                            <div class="chem-chip"><div class="chem-label">C₂S</div><div class="chem-val"><span id="opt_res_C2S">--</span>%</div></div>
-                            <div class="chem-chip"><div class="chem-label">C₃A</div><div class="chem-val"><span id="opt_res_C3A">--</span>%</div></div>
-                            <div class="chem-chip"><div class="chem-label">C₄AF</div><div class="chem-val"><span id="opt_res_C4AF">--</span>%</div></div>
-                            <div class="chem-chip"><div class="chem-label">LSF</div><div class="chem-val"><span id="opt_res_LSF">--</span></div></div>
-                            <div class="chem-chip"><div class="chem-label">SM</div><div class="chem-val"><span id="opt_res_SM">--</span></div></div>
-                            <div class="chem-chip"><div class="chem-label">AM</div><div class="chem-val"><span id="opt_res_AM">--</span></div></div>
-                        </div>
+                    <h4 class="section-kicker">Calculated Cement Chemistry &amp; Moduli</h4>
+                    <div class="chem-grid">
+                        <div class="chem-chip"><div class="chem-label">C₃S</div><div class="chem-val"><span id="opt_res_C3S">--</span>%</div></div>
+                        <div class="chem-chip"><div class="chem-label">C₂S</div><div class="chem-val"><span id="opt_res_C2S">--</span>%</div></div>
+                        <div class="chem-chip"><div class="chem-label">C₃A</div><div class="chem-val"><span id="opt_res_C3A">--</span>%</div></div>
+                        <div class="chem-chip"><div class="chem-label">C₄AF</div><div class="chem-val"><span id="opt_res_C4AF">--</span>%</div></div>
+                        <div class="chem-chip"><div class="chem-label">LSF</div><div class="chem-val"><span id="opt_res_LSF">--</span></div></div>
+                        <div class="chem-chip"><div class="chem-label">SM</div><div class="chem-val"><span id="opt_res_SM">--</span></div></div>
+                        <div class="chem-chip"><div class="chem-label">AM</div><div class="chem-val"><span id="opt_res_AM">--</span></div></div>
                     </div>
 
                     <!-- Predictions and Actual Results -->
-                    <div id="modelPredictionResult" class="prediction-result">
-                        <span class="label">XGBoost 28-Day Estimate <small>Uses entered tests</small></span>
-                        <span class="value" id="opt_res_model_strength" aria-live="polite">--</span>
-                    </div>
+                    <div class="prediction-stack">
+                        <div id="modelPredictionResult" class="prediction-result">
+                            <span class="label">XGBoost 28-Day Estimate <small>Uses entered tests</small></span>
+                            <span class="value" id="opt_res_model_strength" aria-live="polite">--</span>
+                        </div>
 
-                    <div id="expectedDateBox" class="prediction-result" style="display: none; background: var(--panel-muted) !important; border-color: var(--panel-border) !important;">
-                        <span class="label">Expected Test Date (28D)</span>
-                        <span class="value" id="expectedBreakDate" style="font-size: 1rem;">--</span>
-                    </div>
+                        <div class="prediction-meta-row">
+                            <div id="expectedDateBox" class="prediction-result prediction-result--muted" style="display: none;">
+                                <span class="label">Expected Test Date (28D)</span>
+                                <span class="value" id="expectedBreakDate">--</span>
+                            </div>
 
-                    <div id="actualResultBox" class="prediction-result" style="display: none;">
-                        <span class="label">Actual Measured Strength</span>
-                        <div>
-                            <span class="value" id="actualStrengthVal">--</span>
-                            <span class="unit" style="font-size: 0.8rem; margin-left: 0.2rem;">MPa</span>
+                            <div id="actualResultBox" class="prediction-result prediction-result--actual" style="display: none;">
+                                <span class="label">Actual Measured Strength</span>
+                                <div>
+                                    <span class="value" id="actualStrengthVal">--</span>
+                                    <span class="unit">MPa</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -490,21 +451,24 @@
             <div class="dashboard-grid">
                 <!-- Raw Materials Table & Controls -->
                 <div class="predictor-container panel span-full">
-                    <h2>Raw Material Assays & Kiln Feed Setpoints</h2>
-                    <p class="section-desc">Chemical analysis of raw mix components (dry basis) with moisture content and kiln fuel parameters.</p>
-                    
-                    <div style="display: flex; gap: 0.8rem; align-items: center; margin-bottom: 0.85rem; padding: 0.45rem 0.65rem; background: var(--panel-muted); border: 1px solid var(--panel-border); border-radius: var(--radius-control);">
-                        <label for="raw_cement_type" style="font-weight: 600;">Target Cement Type</label>
-                        <select id="raw_cement_type" class="glass-select" style="min-width: 180px;">
-                            <option value="OPC" selected>OPC (Slag corrector)</option>
-                            <option value="SBC">SBC (Slag blend)</option>
-                            <option value="SRC">SRC (Iron ore corrector)</option>
-                        </select>
+                    <div class="panel-head-row">
+                        <div>
+                            <h2>Raw Material Assays &amp; Kiln Feed Setpoints</h2>
+                            <p class="section-desc">Chemical analysis of raw mix components (dry basis) with moisture content and kiln fuel parameters.</p>
+                        </div>
+                        <div class="selector-wrapper">
+                            <label for="raw_cement_type">Target Cement</label>
+                            <select id="raw_cement_type" class="glass-select">
+                                <option value="OPC" selected>OPC (Slag corrector)</option>
+                                <option value="SBC">SBC (Slag blend)</option>
+                                <option value="SRC">SRC (Iron ore corrector)</option>
+                            </select>
+                        </div>
                     </div>
-                    
+
                     <div class="rawmix-workspace">
                         <!-- Column 1: Material Assays Table -->
-                        <div style="overflow-x: auto;">
+                        <div class="table-responsive">
                             <table class="rawmix-input-table">
                                 <thead>
                                     <tr>
@@ -594,7 +558,7 @@
                                         <td><input type="number" id="raw_py_H2O" class="chem-input" value="6.5" step="0.1"></td>
                                     </tr>
                                     <tr class="price-row">
-                                        <td class="oxide-name" style="color: var(--accent); font-weight: 600;">Price (<span class="currency-label">$</span>/t)</td>
+                                        <td class="oxide-name price-label">Price (<span class="currency-label">$</span>/t)</td>
                                         <td><input type="number" id="raw_ls_price" class="chem-input" value="8.00" step="0.50" title="Limestone cost per ton"></td>
                                         <td><input type="number" id="raw_sh_price" class="chem-input" value="12.00" step="0.50" title="Clay / Shale cost per ton"></td>
                                         <td><input type="number" id="raw_sd_price" class="chem-input" value="18.00" step="0.50" title="Sand / Sandstone cost per ton"></td>
@@ -605,26 +569,26 @@
                         </div>
 
                         <!-- Column 2: Controls & Target Setpoints -->
-                        <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+                        <div class="rawmix-controls">
                             <!-- Mode Switcher -->
-                            <div style="display: flex; gap: 0.3rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">
-                                <button type="button" id="raw_mode_solve" class="tab-btn is-active" style="flex: 1; min-height: 30px;">Solve Targets</button>
-                                <button type="button" id="raw_mode_calc" class="tab-btn" style="flex: 1; min-height: 30px;">Check Recipe</button>
+                            <div class="mode-switcher">
+                                <button type="button" id="raw_mode_solve" class="tab-btn is-active">Solve Targets</button>
+                                <button type="button" id="raw_mode_calc" class="tab-btn">Check Recipe</button>
                             </div>
 
                             <!-- Target Moduli Setpoints (Solve Mode) -->
-                            <div id="rawmix_target_moduli_block" style="background: var(--panel-muted); border: 1px solid var(--panel-border); padding: 0.75rem; border-radius: var(--radius-control);">
-                                <h3 style="font-size: 0.8rem; font-weight: 650; margin: 0 0 0.5rem 0; color: var(--text-secondary); text-transform: uppercase;">Target Clinker Moduli</h3>
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
-                                    <div class="form-group" style="text-align: center;">
+                            <div id="rawmix_target_moduli_block" class="sub-box">
+                                <h3 class="sub-box-title">Target Clinker Moduli</h3>
+                                <div class="input-grid-3">
+                                    <div class="form-group">
                                         <label for="raw_target_LSF">LSF (%)</label>
                                         <input type="number" id="raw_target_LSF" class="chem-input" value="95.0" step="0.5">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
+                                    <div class="form-group">
                                         <label for="raw_target_SM">SM</label>
                                         <input type="number" id="raw_target_SM" class="chem-input" value="2.35" step="0.05">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
+                                    <div class="form-group">
                                         <label for="raw_target_AM">AM</label>
                                         <input type="number" id="raw_target_AM" class="chem-input" value="1.40" step="0.05">
                                     </div>
@@ -632,92 +596,91 @@
                             </div>
 
                             <!-- Recipe Proportions Input (Calculate Mode) -->
-                            <div id="rawmix_recipe_input_block" style="display: none; background: var(--panel-muted); border: 1px solid var(--panel-border); padding: 0.75rem; border-radius: var(--radius-control);">
-                                <h3 style="font-size: 0.8rem; font-weight: 650; margin: 0 0 0.5rem 0; color: var(--text-secondary); text-transform: uppercase;">Dry Recipe Proportions (%)</h3>
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem;">
-                                    <div class="form-group" style="text-align: center;">
+                            <div id="rawmix_recipe_input_block" class="sub-box" style="display: none;">
+                                <h3 class="sub-box-title">Dry Recipe Proportions (%)</h3>
+                                <div class="input-grid-4">
+                                    <div class="form-group">
                                         <label for="raw_recipe_ls">Limestone</label>
                                         <input type="number" id="raw_recipe_ls" class="chem-input" value="72.32" step="0.01">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
+                                    <div class="form-group">
                                         <label for="raw_recipe_sh">Clay</label>
                                         <input type="number" id="raw_recipe_sh" class="chem-input" value="24.92" step="0.01">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
+                                    <div class="form-group">
                                         <label for="raw_recipe_sd">Sand</label>
                                         <input type="number" id="raw_recipe_sd" class="chem-input" value="0.37" step="0.01">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
+                                    <div class="form-group">
                                         <label for="raw_recipe_py" id="raw_recipe_py_label">Slag</label>
                                         <input type="number" id="raw_recipe_py" class="chem-input" value="2.39" step="0.01">
                                     </div>
                                 </div>
-                                <div style="margin-top: 0.5rem; text-align: center; font-size: 0.8rem; font-family: var(--font-mono);">
+                                <div class="recipe-total-line">
                                     <span>Total: </span>
-                                    <span id="raw_recipe_total" style="font-weight: 700; color: var(--status-nominal);">100.00%</span>
+                                    <span id="raw_recipe_total">100.00%</span>
                                 </div>
                             </div>
 
                             <!-- Kiln Fuel & Economics Settings -->
-                            <div style="background: var(--panel-muted); border: 1px solid var(--panel-border); padding: 0.75rem; border-radius: var(--radius-control);">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
-                                    <h3 style="font-size: 0.8rem; font-weight: 650; margin: 0; color: var(--text-secondary); text-transform: uppercase;">HFO & Thermal Fuel Economics</h3>
-                                    <span style="font-size: 0.68rem; color: var(--accent); background: rgba(var(--accent-rgb, 72, 169, 148), 0.12); padding: 2px 6px; border-radius: 3px; font-weight: 600;" title="Sinoma Sulaymaniyah design standard">Std: 9,800 kcal/kg</span>
+                            <div class="sub-box fuel-box">
+                                <div class="sub-box-head">
+                                    <h3 class="sub-box-title">HFO &amp; Thermal Fuel Economics</h3>
+                                    <span class="std-chip" title="Sinoma Sulaymaniyah design standard">Std: 9,800 kcal/kg</span>
                                 </div>
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.45rem;">
-                                    <div class="form-group" style="text-align: center;">
-                                        <label for="raw_hfo_heat" style="font-size: 0.7rem;">Heat (kcal/kg)</label>
+                                <div class="input-grid-3">
+                                    <div class="form-group">
+                                        <label for="raw_hfo_heat">Heat (kcal/kg)</label>
                                         <input type="number" id="raw_hfo_heat" class="chem-input" value="740" step="5" title="Specific heat consumption per kg clinker">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
-                                        <label for="raw_hfo_cal" style="font-size: 0.7rem;">Calorific (kcal/kg)</label>
+                                    <div class="form-group">
+                                        <label for="raw_hfo_cal">Calorific (kcal/kg)</label>
                                         <input type="number" id="raw_hfo_cal" class="chem-input" value="9800" step="50" title="Delivered HFO Net Calorific Value">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
-                                        <label for="raw_hfo_sulfur" style="font-size: 0.7rem;">Sulfur (%)</label>
+                                    <div class="form-group">
+                                        <label for="raw_hfo_sulfur">Sulfur (%)</label>
                                         <input type="number" id="raw_hfo_sulfur" class="chem-input" value="2.50" step="0.05" title="HFO sulfur content">
                                     </div>
                                 </div>
-                                <div style="display: grid; grid-template-columns: 1.1fr 0.9fr 1fr; gap: 0.4rem; padding-top: 0.4rem; border-top: 1px dashed var(--panel-border);">
-                                    <div class="form-group" style="text-align: center;">
-                                        <label for="raw_fuel_price" style="font-size: 0.7rem;">Fuel Price (<span class="currency-label">$</span>/t)</label>
+                                <div class="sub-divider"></div>
+                                <div class="input-grid-3">
+                                    <div class="form-group">
+                                        <label for="raw_fuel_price">Fuel Price (<span class="currency-label">$</span>/t)</label>
                                         <input type="number" id="raw_fuel_price" class="chem-input" value="350.00" step="10" title="Heavy fuel oil price per ton">
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
-                                        <label for="raw_currency" style="font-size: 0.7rem;">Currency</label>
-                                        <select id="raw_currency" class="chem-input" style="height: 28px; padding: 2px 4px;">
+                                    <div class="form-group">
+                                        <label for="raw_currency">Currency</label>
+                                        <select id="raw_currency" class="chem-input">
                                             <option value="$" selected>$ (USD)</option>
                                             <option value="IQD">IQD (Dinar)</option>
                                             <option value="€">€ (EUR)</option>
                                         </select>
                                     </div>
-                                    <div class="form-group" style="text-align: center;">
-                                        <label for="raw_plant_capacity" style="font-size: 0.7rem;">Capacity (t/d)</label>
+                                    <div class="form-group">
+                                        <label for="raw_plant_capacity">Capacity (t/d)</label>
                                         <input type="number" id="raw_plant_capacity" class="chem-input" value="5300" step="100" title="Kiln clinker daily capacity">
                                     </div>
                                 </div>
                             </div>
 
-                            <button type="button" id="btnCalculateRawMix" class="btn-predict" style="width: 100%; min-height: 36px; margin-top: auto;">Calculate Proportions</button>
+                            <button type="button" id="btnCalculateRawMix" class="btn-predict btn-full">Calculate Proportions</button>
                         </div>
 
                         <!-- Column 3: Proportions Output Panel -->
-                        <div id="rawmix_proportions_block" style="display: none; height: 100%;">
+                        <div id="rawmix_proportions_block" style="display: none;">
                             <div class="proportions-panel">
                                 <h3>Feeder Proportions</h3>
-                                <div style="display: flex; flex-direction: column; gap: 0.8rem; flex: 1;">
-                                    <div>
-                                        <div style="font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; margin-bottom: 0.35rem;">Wet Proportions (Feeders)</div>
-                                        <ul id="raw_result_wet" class="prop-list">
-                                            <!-- Populated by JS -->
-                                        </ul>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; margin-bottom: 0.35rem;">Dry Proportions (Raw Mill Target)</div>
-                                        <ul id="raw_result_dry" class="prop-list">
-                                            <!-- Populated by JS -->
-                                        </ul>
-                                    </div>
+                                <div class="prop-group">
+                                    <div class="prop-group-label">Wet Proportions (Feeders)</div>
+                                    <ul id="raw_result_wet" class="prop-list">
+                                        <!-- Populated by JS -->
+                                    </ul>
+                                </div>
+                                <div class="prop-group">
+                                    <div class="prop-group-label">Dry Proportions (Raw Mill Target)</div>
+                                    <ul id="raw_result_dry" class="prop-list">
+                                        <!-- Populated by JS -->
+                                    </ul>
                                 </div>
                             </div>
                         </div>
@@ -726,14 +689,14 @@
 
                 <!-- Results Output Card -->
                 <div class="predictor-container panel span-full">
-                    <h2 id="rawmix_results_title">Clinker Quality & Mineral Phase Projections</h2>
+                    <h2 id="rawmix_results_title">Clinker Quality &amp; Mineral Phase Projections</h2>
                     <p class="section-desc">Expected chemical analysis and Bogue phase compositions calculated from the solved raw mix recipe.</p>
 
                     <div id="rawmix_results_block" style="display: none;">
                         <div class="rawmix-result-grid">
                             <!-- Expected Clinker Oxides -->
                             <div>
-                                <h3 style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.4rem;">Projected Clinker Chemistry</h3>
+                                <h3 class="section-kicker">Projected Clinker Chemistry</h3>
                                 <div class="chem-grid-11">
                                     <div class="chem-chip"><div class="chem-label">SiO₂</div><div class="chem-val"><span id="cl_SiO2">--</span>%</div></div>
                                     <div class="chem-chip"><div class="chem-label">Al₂O₃</div><div class="chem-val"><span id="cl_Al2O3">--</span>%</div></div>
@@ -743,15 +706,15 @@
                                     <div class="chem-chip"><div class="chem-label">Na₂O</div><div class="chem-val"><span id="cl_Na2O">--</span>%</div></div>
                                     <div class="chem-chip"><div class="chem-label">K₂O</div><div class="chem-val"><span id="cl_K2O">--</span>%</div></div>
                                     <div class="chem-chip"><div class="chem-label">SO₃</div><div class="chem-val"><span id="cl_SO3">--</span>%</div></div>
-                                    <div class="chem-chip"><div class="chem-label">LSF</div><div class="chem-val" style="color: var(--accent);"><span id="cl_LSF">--</span></div></div>
-                                    <div class="chem-chip"><div class="chem-label">SM</div><div class="chem-val" style="color: var(--accent);"><span id="cl_SM">--</span></div></div>
-                                    <div class="chem-chip"><div class="chem-label">AM</div><div class="chem-val" style="color: var(--accent);"><span id="cl_AM">--</span></div></div>
+                                    <div class="chem-chip"><div class="chem-label">LSF</div><div class="chem-val chem-val--accent"><span id="cl_LSF">--</span></div></div>
+                                    <div class="chem-chip"><div class="chem-label">SM</div><div class="chem-val chem-val--accent"><span id="cl_SM">--</span></div></div>
+                                    <div class="chem-chip"><div class="chem-label">AM</div><div class="chem-val chem-val--accent"><span id="cl_AM">--</span></div></div>
                                 </div>
                             </div>
 
                             <!-- Bogue Mineral Phases -->
                             <div>
-                                <h3 style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.4rem;">Projected Bogue Mineral Phases</h3>
+                                <h3 class="section-kicker">Projected Bogue Mineral Phases</h3>
                                 <div class="phase-grid">
                                     <div class="phase-card">
                                         <div class="phase-label">C₃S (Alite)</div>
@@ -774,88 +737,82 @@
                         </div>
 
                         <!-- Process Economics & Fuel Efficiency Card -->
-                        <div class="economics-card" id="raw_economics_card" style="margin-top: 1rem; margin-bottom: 0.9rem; border: 1px solid var(--panel-border); border-radius: var(--radius-control); background: var(--panel-muted); padding: 0.95rem;">
+                        <div id="raw_economics_card" class="econ-panel">
                             <!-- Header -->
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">
-                                <div style="display: flex; align-items: center; gap: 0.6rem;">
-                                    <h3 style="margin: 0; font-size: 0.92rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
-                                        <span>💰</span> Process Economics & Thermal Energy Consumption
-                                    </h3>
-                                    <span id="econ_status_badge" class="badge" style="background: rgba(var(--accent-rgb, 72, 169, 148), 0.15); color: var(--accent); border: 1px solid var(--accent); font-size: 0.72rem; padding: 2px 7px; border-radius: 4px;">Baseline Standard</span>
+                            <div class="econ-header">
+                                <div class="econ-title-row">
+                                    <h3>Process Economics &amp; Thermal Energy</h3>
+                                    <span id="econ_status_badge" class="status-badge" data-tone="info">Baseline Standard</span>
                                 </div>
-                                <span style="font-size: 0.75rem; color: var(--text-secondary);">Provider Standard: <strong>Sinoma Sulaymaniyah (9,800 kcal/kg)</strong></span>
+                                <span class="econ-standard">Benchmark: <strong>Sinoma Sulaymaniyah (9,800 kcal/kg)</strong></span>
                             </div>
 
                             <!-- Top KPI 3-Column Grid -->
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.65rem; margin-bottom: 0.85rem;">
+                            <div class="econ-kpi-grid">
                                 <!-- KPI 1: Direct Clinker Cost -->
-                                <div class="kpi-box" style="background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px; padding: 0.65rem 0.8rem;">
-                                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Total Direct Clinker Cost</div>
-                                    <div style="font-size: 1.35rem; font-weight: 750; color: var(--text-primary); font-family: var(--font-mono); margin-top: 0.2rem;">
-                                        <span id="econ_currency_sym1">$</span><span id="econ_total_clinker_cost">--</span> <span style="font-size: 0.78rem; font-weight: normal; color: var(--text-secondary);">/ ton cl</span>
+                                <div class="econ-kpi">
+                                    <div class="econ-kpi-label">Total Direct Clinker Cost</div>
+                                    <div class="econ-kpi-value">
+                                        <span id="econ_currency_sym1">$</span><span id="econ_total_clinker_cost">--</span> <span class="econ-kpi-unit">/ ton cl</span>
                                     </div>
-                                    <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                    <div class="econ-kpi-sub">
                                         Daily Cost: <span id="econ_currency_sym2">$</span><span id="econ_daily_total_cost">--</span> / day
                                     </div>
                                 </div>
 
                                 <!-- KPI 2: Raw Material Cost -->
-                                <div class="kpi-box" style="background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px; padding: 0.65rem 0.8rem;">
-                                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Raw Material Cost</div>
-                                    <div style="font-size: 1.35rem; font-weight: 750; color: var(--accent); font-family: var(--font-mono); margin-top: 0.2rem;">
-                                        <span id="econ_currency_sym3">$</span><span id="econ_mat_clinker_cost">--</span> <span style="font-size: 0.78rem; font-weight: normal; color: var(--text-secondary);">/ ton cl</span>
+                                <div class="econ-kpi">
+                                    <div class="econ-kpi-label">Raw Material Cost</div>
+                                    <div class="econ-kpi-value econ-kpi-val--accent">
+                                        <span id="econ_currency_sym3">$</span><span id="econ_mat_clinker_cost">--</span> <span class="econ-kpi-unit">/ ton cl</span>
                                     </div>
-                                    <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                    <div class="econ-kpi-sub">
                                         Raw Meal: <span id="econ_currency_sym4">$</span><span id="econ_meal_cost">--</span>/t (Factor: <span id="econ_meal_factor">1.532</span>)
                                     </div>
                                 </div>
 
                                 <!-- KPI 3: Fuel Cost & SFC -->
-                                <div class="kpi-box" style="background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px; padding: 0.65rem 0.8rem;">
-                                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">HFO Fuel Cost & Consumption</div>
-                                    <div style="font-size: 1.35rem; font-weight: 750; color: var(--cement-src); font-family: var(--font-mono); margin-top: 0.2rem;">
-                                        <span id="econ_currency_sym5">$</span><span id="econ_fuel_cost">--</span> <span style="font-size: 0.78rem; font-weight: normal; color: var(--text-secondary);">/ ton cl</span>
+                                <div class="econ-kpi">
+                                    <div class="econ-kpi-label">HFO Fuel Cost &amp; Consumption</div>
+                                    <div class="econ-kpi-value econ-kpi-val--src">
+                                        <span id="econ_currency_sym5">$</span><span id="econ_fuel_cost">--</span> <span class="econ-kpi-unit">/ ton cl</span>
                                     </div>
-                                    <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                                        SFC: <strong id="econ_sfc_actual" style="font-family: var(--font-mono);">--</strong> kg HFO / ton clinker
+                                    <div class="econ-kpi-sub">
+                                        SFC: <strong id="econ_sfc_actual">--</strong> kg HFO / ton clinker
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Calorific Value Impact & Provider Benchmark Callout -->
-                            <div id="econ_calorific_alert_box" style="padding: 0.75rem 0.9rem; border-radius: var(--radius-control); margin-bottom: 0.85rem; border: 1px solid var(--control-border); background: var(--panel-bg);">
+                            <div id="econ_calorific_alert_box" class="econ-alert" data-tone="info">
                                 <!-- Populated by JS -->
                             </div>
 
                             <!-- Secondary Detail Grid: Material Breakdown & Energy Cost -->
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem;">
+                            <div class="econ-detail-grid">
                                 <!-- Material Cost Breakdown -->
-                                <div style="background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px; padding: 0.7rem;">
-                                    <div style="font-size: 0.74rem; font-weight: 650; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.45rem;">
-                                        Raw Material Cost Contribution (/ton Clinker)
-                                    </div>
-                                    <div id="econ_mat_breakdown_list" style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.78rem;">
+                                <div class="econ-detail-box">
+                                    <div class="econ-detail-title">Raw Material Cost Contribution (/ton Clinker)</div>
+                                    <div id="econ_mat_breakdown_list" class="econ-kv-list">
                                         <!-- Populated by JS -->
                                     </div>
                                 </div>
 
                                 <!-- Thermal Energy & Fuel Economics -->
-                                <div style="background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px; padding: 0.7rem;">
-                                    <div style="font-size: 0.74rem; font-weight: 650; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.45rem;">
-                                        Thermal Energy Cost Metrics
-                                    </div>
-                                    <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.78rem;">
-                                        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.4rem; background: var(--panel-muted); border-radius: 2px;">
-                                            <span style="color: var(--text-secondary);">Energy Cost per Gcal:</span>
-                                            <strong style="font-family: var(--font-mono);"><span id="econ_currency_sym6">$</span><span id="econ_cost_gcal">--</span> / Gcal</strong>
+                                <div class="econ-detail-box">
+                                    <div class="econ-detail-title">Thermal Energy Cost Metrics</div>
+                                    <div class="econ-kv-list">
+                                        <div class="econ-kv-row">
+                                            <span>Energy Cost per Gcal:</span>
+                                            <strong><span id="econ_currency_sym6">$</span><span id="econ_cost_gcal">--</span> / Gcal</strong>
                                         </div>
-                                        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.4rem; background: var(--panel-muted); border-radius: 2px;">
-                                            <span style="color: var(--text-secondary);">Energy Cost per Gigajoule (GJ):</span>
-                                            <strong style="font-family: var(--font-mono);"><span id="econ_currency_sym7">$</span><span id="econ_cost_gj">--</span> / GJ</strong>
+                                        <div class="econ-kv-row">
+                                            <span>Energy Cost per Gigajoule (GJ):</span>
+                                            <strong><span id="econ_currency_sym7">$</span><span id="econ_cost_gj">--</span> / GJ</strong>
                                         </div>
-                                        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.4rem; background: var(--panel-muted); border-radius: 2px;">
-                                            <span style="color: var(--text-secondary);">Standard Baseline SFC (Sinoma):</span>
-                                            <strong style="font-family: var(--font-mono);">75.51 kg HFO / ton cl</strong>
+                                        <div class="econ-kv-row">
+                                            <span>Standard Baseline SFC (Sinoma):</span>
+                                            <strong>75.51 kg HFO / ton cl</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -868,7 +825,7 @@
                         </div>
                     </div>
 
-                    <div id="rawmix_prompt_block" style="text-align: center; padding: 2rem 1rem; color: var(--text-secondary); background: var(--panel-muted); border: 1px dashed var(--panel-border); border-radius: var(--radius-control);">
+                    <div id="rawmix_prompt_block" class="empty-prompt">
                         Enter material chemistry setpoints and select <strong>Calculate Proportions</strong>.
                     </div>
                 </div>
@@ -880,19 +837,19 @@
             <div class="dashboard-grid assistant-grid">
                 <!-- Chat Window -->
                 <div class="chart-container panel assistant-panel">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">
+                    <div class="assistant-head">
                         <div>
-                            <h2 style="margin: 0; font-size: 1rem;">Process Knowledge Assistant</h2>
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
-                                <label for="aiProvider" style="font-size: 0.75rem;">Model</label>
-                                <select id="aiProvider" class="glass-select" style="min-height: 28px; padding: 0.2rem 0.4rem; font-size: 0.78rem;">
+                            <h2>Process Knowledge Assistant</h2>
+                            <div class="assistant-model-bar">
+                                <label for="aiProvider">Model</label>
+                                <select id="aiProvider" class="glass-select">
                                     <option value="gemini">Gemini 3.8 Flash</option>
                                     <option value="codex">Codex (Account)</option>
                                 </select>
-                                <span id="activeModelLabel" style="color: var(--text-muted); font-size: 0.75rem;">Gemini 3.8 Flash</span>
+                                <span id="activeModelLabel">Gemini 3.8 Flash</span>
                             </div>
                         </div>
-                        <button id="btnClearChat" class="btn-predict secondary-action">Clear</button>
+                        <button type="button" id="btnClearChat" class="btn-predict secondary-action">Clear</button>
                     </div>
 
                     <!-- Chat Messages Stream -->
@@ -903,9 +860,9 @@
                     </div>
 
                     <!-- Chat Input -->
-                    <div style="display: flex; gap: 0.5rem; margin-top: 0.65rem;">
-                        <input type="text" id="chatInput" class="glass-select" style="flex: 1;" placeholder="Enter process query or standard specification reference…" autocomplete="off">
-                        <button id="btnSendChat" class="btn-predict compact-action">Send</button>
+                    <div class="chat-composer">
+                        <input type="text" id="chatInput" class="glass-select" placeholder="Enter process query or standard specification reference…" autocomplete="off">
+                        <button type="button" id="btnSendChat" class="btn-predict compact-action">Send</button>
                     </div>
                 </div>
 
@@ -914,18 +871,16 @@
                     <h2>Technical Reference Base</h2>
                     <p class="section-desc">Indexed manuals, ASTM/EN specifications, and plant chemistry literature.</p>
 
-                    <button id="btnRebuildRAG" class="btn-predict" style="width: 100%; min-height: 34px; margin-bottom: 0.85rem;">
-                        Re-index Document Library
-                    </button>
+                    <button type="button" id="btnRebuildRAG" class="btn-predict btn-full">Re-index Document Library</button>
 
-                    <div id="ragStatus" style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.85rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.65rem;">
+                    <div id="ragStatus" class="rag-status">
                         <strong>Status: Ready</strong>
                     </div>
 
-                    <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-                        <h3 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.4rem;">Retrieved references (last query)</h3>
-                        <div id="citedSources" style="flex: 1; overflow-y: auto; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                            <div style="text-align: center; padding: 2rem 0; color: var(--text-muted); font-size: 0.8rem;">Matching reference passages will appear here.</div>
+                    <div class="sources-section">
+                        <h3 class="section-kicker">Retrieved references (last query)</h3>
+                        <div id="citedSources" class="sources-list">
+                            <div class="sources-empty">Matching reference passages will appear here.</div>
                         </div>
                     </div>
                 </aside>
@@ -935,6 +890,6 @@
         </main>
     </div>
 
-    <script src="script.js?v=21"></script>
+    <script src="script.js?v=22"></script>
 </body>
 </html>

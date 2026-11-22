@@ -61,18 +61,30 @@ BASE_MATERIALS = {
 
 
 class TestRawmixEndpoint:
-    def test_slow_typesafe_review_does_not_block_other_requests(self, monkeypatch):
+    def test_slow_typesafe_rerank_does_not_block_other_requests(self, monkeypatch):
         import typesafe_ai
 
         started = threading.Event()
 
-        def slow_review(state, questions):
+        def slow_rerank(query, candidates):
             started.set()
             time.sleep(0.25)
-            return None
+            return candidates
 
-        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr(typesafe_ai, "_evaluate", slow_review)
+        monkeypatch.setattr(routes, "rerank_contexts", slow_rerank)
+        monkeypatch.setattr(routes, "get_rag_index", lambda: {
+            "chunks": [
+                {"text": "strength test", "source": "manual.pdf", "page": 1},
+                {"text": "cement report", "source": "manual.pdf", "page": 2},
+            ],
+            "vectorizer": TfidfVectorizer().fit(["strength test", "cement report"]),
+            "tfidf_matrix": TfidfVectorizer().fit(["strength test", "cement report"]).transform(["strength test", "cement report"]),
+        })
+
+        async def fake_ask_codex(prompt):
+            return "Codex ok", "Codex test"
+
+        monkeypatch.setattr(routes, "ask_codex", fake_ask_codex)
         state.reload_from_csv()
         app = FastAPI()
         app.include_router(router)
@@ -80,12 +92,9 @@ class TestRawmixEndpoint:
         async def exercise():
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
-                slow = asyncio.create_task(async_client.post("/api/rawmix/calculate", json={
-                    "mode": "solve",
-                    "cement_type": "OPC",
-                    "materials": BASE_MATERIALS,
-                    "hfo": {"heat": 730, "calorific": 9800, "sulfur": 2.5},
-                    "targets": {"LSF": 95.0, "SM": 2.4, "AM": 1.5},
+                slow = asyncio.create_task(async_client.post("/api/chat", json={
+                    "message": "strength test",
+                    "provider": "codex",
                 }))
                 for _ in range(100):
                     if started.is_set():
@@ -110,7 +119,24 @@ class TestRawmixEndpoint:
         body = resp.json()
         assert body["feasibility"] == "feasible"
         assert abs(body["clinker"]["LSF"] - 95.0) <= 0.5
-        assert body["typesafe"] == {"enabled": False}
+        assert body["typesafe"]["enabled"] is True
+        assert body["typesafe"]["action"] == "monitor"
+        assert body["typesafe"]["requires_human_review"] is False
+
+    def test_deterministic_rawmix_review_flags_errors_and_warnings(self):
+        from routes import deterministic_judge_rawmix
+
+        clean = deterministic_judge_rawmix([])
+        assert clean["action"] == "monitor"
+        assert clean["requires_human_review"] is False
+
+        warn = deterministic_judge_rawmix([{"severity": "warning", "message": "high liquid"}])
+        assert warn["action"] == "adjust_recipe"
+        assert warn["requires_human_review"] is False
+
+        err = deterministic_judge_rawmix([{"severity": "error", "message": "infeasible"}])
+        assert err["action"] == "stop_and_review"
+        assert err["requires_human_review"] is True
 
     def test_invalid_target_type_rejected_422(self, client):
         resp = client.post("/api/rawmix/calculate", json={
@@ -240,7 +266,25 @@ class TestPredictEndpoint:
         assert isinstance(body["mlPrediction"], (int, float))
         assert body["prediction"] == body["mlPrediction"]
         assert "confidence" in body
-        assert body["typesafe"]["enabled"] is False
+        assert body["typesafe"]["status"] in {"approved", "not_reviewed"}
+        assert body["typesafe"]["safe_to_show"] is not False
+
+    def test_deterministic_prediction_never_calls_external_typesafe_or_hides_estimate(self, client, monkeypatch):
+        import typesafe_ai
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("External TypeSafe should not be called by /api/predict")
+
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        monkeypatch.setattr(typesafe_ai, "_evaluate", fail_if_called)
+
+        resp = client.post("/api/predict", json={
+            "Cement_Type": "OPC",
+            "SiO2": 21.5, "Al2O3": 5.5, "Fe2O3": 3.5, "CaO": 65.0,
+            "MgO": 1.5, "SO3": 0.8, "Fineness": 3800,
+        })
+        assert resp.status_code == 200
+        assert resp.json()["typesafe"]["status"] != "rejected"
 
     def test_unknown_type_rejected_422(self, client):
         resp = client.post("/api/predict", json={"Cement_Type": "XYZ"})
@@ -357,6 +401,40 @@ class TestChatEndpoint:
         assert "TypeSafe safe-to-show=False (74%)" in prompt_context
         assert "HELD FOR QUALIFIED REVIEW" in prompt_context
         assert "never present them as production recommendations" in prompt_context
+
+    def test_chat_injects_exact_records_for_older_dates_in_query(self, client, monkeypatch):
+        snapshot = state.get_snapshot()
+        assert snapshot is not None
+        # Pick the earliest OPC row in the fixture (well outside the latest 60 rows)
+        earliest = snapshot.df.sort_values("Date_str").iloc[0]
+        target_date = str(earliest["Date_str"])
+        yyyy, mm, dd = target_date.split("-")
+        dmy_date = f"{dd}/{mm}/{yyyy}"
+
+        captured = {}
+
+        async def fake_ask_codex(prompt):
+            captured["prompt"] = prompt
+            return "Historical date response", "Codex test model"
+
+        monkeypatch.setattr("routes.ask_codex", fake_ask_codex)
+        resp = client.post("/api/chat", json={
+            "message": f"Show me the test results for {dmy_date} and 1999-12-31.",
+            "provider": "codex",
+        })
+
+        assert resp.status_code == 200
+        assert "EXACT LABORATORY RECORDS FOR DATES REFERENCED IN QUERY" in captured["prompt"]
+        assert f"Date: {target_date} | Type: {earliest['Cement_Type']}" in captured["prompt"]
+        assert "Date: 1999-12-31 | No laboratory records found in dataset." in captured["prompt"]
+
+    def test_extract_requested_dates_handles_multiple_formats(self):
+        from routes import extract_requested_dates
+
+        parsed = extract_requested_dates([
+            "Compare 2024-03-05, 12/08/2023, and Aug 14, 2022 (ignore 28-day and EN 197-1)."
+        ])
+        assert parsed == ["2024-03-05", "2023-08-12", "2022-08-14"]
 
     def test_predict_to_chat_end_to_end_payload_compatibility(self, client, monkeypatch):
         from unittest.mock import AsyncMock

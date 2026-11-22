@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import calendar
 import os
+import re
 from typing import Any
 
 import anyio
@@ -26,7 +27,7 @@ from schemas import (
     RawMixRequest,
 )
 import state
-from typesafe_ai import assess_prediction, judge_rawmix, rerank_contexts
+from typesafe_ai import rerank_contexts
 from averages import get_averages_data
 
 router = APIRouter()
@@ -180,6 +181,63 @@ async def chemistry_analyze(body: ChemistryAnalyzeRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def deterministic_assess_prediction(confidence: str) -> dict[str, Any]:
+    """Deterministic strength-estimate review based on rolling validation confidence."""
+    if confidence == "predictive":
+        return {
+            "enabled": True,
+            "safe_to_show": True,
+            "probability": 0.95,
+            "status": "approved",
+        }
+    if confidence == "exploratory":
+        return {
+            "enabled": True,
+            "safe_to_show": True,
+            "probability": 0.78,
+            "status": "approved",
+        }
+    return {
+        "enabled": False,
+        "safe_to_show": None,
+        "probability": None,
+        "status": "not_reviewed",
+    }
+
+
+def deterministic_judge_rawmix(diagnostics: list[dict[str, str]]) -> dict[str, Any]:
+    """Deterministic raw-mix operational review based on FLS solver diagnostics."""
+    has_error = any(d.get("severity") == "error" for d in diagnostics)
+    has_warning = any(d.get("severity") == "warning" for d in diagnostics)
+
+    if has_error:
+        return {
+            "enabled": True,
+            "action": "stop_and_review",
+            "confidence": 0.95,
+            "probabilities": {"monitor": 0.02, "adjust_recipe": 0.03, "stop_and_review": 0.95},
+            "requires_human_review": True,
+            "review_probability": 0.95,
+        }
+    if has_warning:
+        return {
+            "enabled": True,
+            "action": "adjust_recipe",
+            "confidence": 0.85,
+            "probabilities": {"monitor": 0.10, "adjust_recipe": 0.85, "stop_and_review": 0.05},
+            "requires_human_review": False,
+            "review_probability": 0.45,
+        }
+    return {
+        "enabled": True,
+        "action": "monitor",
+        "confidence": 0.95,
+        "probabilities": {"monitor": 0.95, "adjust_recipe": 0.04, "stop_and_review": 0.01},
+        "requires_human_review": False,
+        "review_probability": 0.05,
+    }
+
+
 @router.post("/api/predict")
 async def predict(body: PredictRequest):
     try:
@@ -208,14 +266,7 @@ async def predict(body: PredictRequest):
         prediction_source = "xgboost"
         confidence_label = ml_meta["confidenceLabel"]
 
-        typesafe = await _typesafe_call(
-            assess_prediction,
-            c_type,
-            pred,
-            ml_meta["confidence"],
-            ml_meta["r2"],
-            ml_meta["rmse"],
-        )
+        typesafe = deterministic_assess_prediction(ml_meta["confidence"])
 
         return {
             "prediction": round(pred, 2),
@@ -238,12 +289,7 @@ async def predict(body: PredictRequest):
 async def rawmix_calculate(body: RawMixRequest):
     try:
         result = calculate_rawmix(body.model_dump())
-        result["typesafe"] = await _typesafe_call(
-            judge_rawmix,
-            body.cement_type,
-            result["clinker"],
-            result["diagnostics"],
-        )
+        result["typesafe"] = deterministic_judge_rawmix(result["diagnostics"])
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -414,6 +460,118 @@ def _call_gemini_sync(api_key: str, formatted_history: list, prompt: str) -> str
     return response.text
 
 
+_DATE_ISO_RE = re.compile(r"\b((?:19|20)\d{2})[-/](\d{1,2})[-/](\d{1,2})\b")
+_DATE_DMY_RE = re.compile(r"\b(\d{1,2})[-/](\d{1,2})[-/]((?:19|20)\d{2})\b")
+_DATE_NAMED_RE = re.compile(
+    r"\b(?:"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(?:19|20)\d{2}"
+    r"|"
+    r"\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?,?\s+(?:19|20)\d{2}"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def extract_requested_dates(texts: list[str], max_dates: int = 5) -> list[str]:
+    """Extract up to `max_dates` normalized YYYY-MM-DD dates from query/recent texts."""
+    dates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(dt_val: pd.Timestamp | Any) -> None:
+        if pd.isna(dt_val):
+            return
+        iso = dt_val.strftime("%Y-%m-%d")
+        if iso not in seen and len(dates) < max_dates:
+            seen.add(iso)
+            dates.append(iso)
+
+    for text in texts:
+        if not text:
+            continue
+        for y, m, d in _DATE_ISO_RE.findall(text):
+            _add(pd.to_datetime(f"{y}-{int(m):02d}-{int(d):02d}", format="%Y-%m-%d", errors="coerce"))
+        for d, m, y in _DATE_DMY_RE.findall(text):
+            _add(pd.to_datetime(f"{y}-{int(m):02d}-{int(d):02d}", format="%Y-%m-%d", errors="coerce"))
+        for match in _DATE_NAMED_RE.findall(text):
+            cleaned = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", match, flags=re.IGNORECASE)
+            _add(pd.to_datetime(cleaned, errors="coerce"))
+        if len(dates) >= max_dates:
+            break
+
+    return dates
+
+
+def _format_metric(row: pd.Series, col: str, fmt: str, unit: str = "") -> str:
+    val = pd.to_numeric(row.get(col), errors="coerce") if col in row.index else np.nan
+    if pd.isna(val):
+        return "N/A"
+    return f"{format(float(val), fmt)}{unit}"
+
+
+def lookup_chat_date_records(df: pd.DataFrame, message: str, history: list | None = None) -> str:
+    """Look up exact laboratory records for any dates referenced in the user's message."""
+    recent_user_msgs = [
+        turn.content
+        for turn in reversed(history or [])
+        if getattr(turn, "role", None) == "user" and getattr(turn, "content", None)
+    ][:2]
+    dates = extract_requested_dates([message]) or extract_requested_dates(recent_user_msgs)
+    if not dates:
+        return ""
+    if df is None or df.empty or "Date_str" not in df.columns:
+        return "\n".join(f"Date: {d} | Dataset is empty." for d in dates)
+
+    today = pd.Timestamp.now().normalize()
+    lines: list[str] = []
+
+    for d_str in dates:
+        matched = df[df["Date_str"] == d_str]
+        if matched.empty:
+            lines.append(f"Date: {d_str} | No laboratory records found in dataset.")
+            continue
+
+        sample_dt = pd.to_datetime(d_str, errors="coerce")
+        age_days = (today - sample_dt).days if pd.notna(sample_dt) else 999
+        for _, row in matched.iterrows():
+            ctype = row.get("Cement_Type", "Unknown")
+            s28_raw = pd.to_numeric(row.get("Strength_28D"), errors="coerce")
+            if pd.notna(s28_raw):
+                s28 = f"{float(s28_raw):.1f} MPa"
+            elif age_days < 28:
+                s28 = "Pending 28D Curing"
+            else:
+                s28 = "Not recorded / missing"
+
+            se_raw = pd.to_numeric(row.get("Strength_Early"), errors="coerce")
+            if pd.notna(se_raw):
+                se = f"{float(se_raw):.1f} MPa"
+            elif age_days < 2:
+                se = "Pending Early Curing"
+            else:
+                se = "Not recorded / missing"
+
+            lines.append(
+                f"Date: {d_str} | Type: {ctype} | 28D: {s28} | 2D: {se} | "
+                f"Blaine: {_format_metric(row, 'Fineness', '.0f', ' cm²/g')} | "
+                f"%R,80: {_format_metric(row, 'Residue_80', '.2f', '%')} | "
+                f"CaO: {_format_metric(row, 'CaO', '.2f', '%')} | "
+                f"SiO2: {_format_metric(row, 'SiO2', '.2f', '%')} | "
+                f"Al2O3: {_format_metric(row, 'Al2O3', '.2f', '%')} | "
+                f"Fe2O3: {_format_metric(row, 'Fe2O3', '.2f', '%')} | "
+                f"MgO: {_format_metric(row, 'MgO', '.2f', '%')} | "
+                f"SO3: {_format_metric(row, 'SO3', '.2f', '%')} | "
+                f"LSF: {_format_metric(row, 'LSF', '.2f', '%')} | "
+                f"SM: {_format_metric(row, 'SM', '.2f')} | "
+                f"AM: {_format_metric(row, 'AM', '.2f')} | "
+                f"C3S: {_format_metric(row, 'C3S', '.2f', '%')} | "
+                f"C2S: {_format_metric(row, 'C2S', '.2f', '%')} | "
+                f"C3A: {_format_metric(row, 'C3A', '.2f', '%')} | "
+                f"C4AF: {_format_metric(row, 'C4AF', '.2f', '%')}"
+            )
+
+    return "\n".join(lines)
+
+
 @router.post("/api/chat")
 async def chat(body: ChatRequest):
     try:
@@ -473,6 +631,14 @@ async def _chat_impl(body: ChatRequest):
         ])
 
         live_summary = state.get_live_dataset_summary(snapshot.df, refresh_meta=snapshot.refresh_meta)
+        date_lookup_str = lookup_chat_date_records(snapshot.df, message, history)
+        date_lookup_section = (
+            f"--- 1b. EXACT LABORATORY RECORDS FOR DATES REFERENCED IN QUERY ---\n"
+            f"{date_lookup_str}\n"
+            f"------------------------------------------------------------------\n\n"
+            if date_lookup_str
+            else ""
+        )
         reliability_summary = ml_reliability_context(body.prediction_context)
 
         system_instruction = (
@@ -482,6 +648,7 @@ async def _chat_impl(body: ChatRequest):
             f"--- 1. LIVE PLANT LABORATORY DATA & RECENT RESULTS ---\n"
             f"{live_summary}\n"
             f"----------------------------------------------------\n\n"
+            f"{date_lookup_section}"
             f"--- 2. ML RELIABILITY & LATEST OPTIMIZER REVIEW ---\n"
             f"{reliability_summary}\n"
             f"---------------------------------------------------\n\n"

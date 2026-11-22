@@ -318,17 +318,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         const anomalyBanner = document.getElementById('anomaly_banner');
         if (dashboardData.anomalies && dashboardData.anomalies.length > 0) {
             const textDiv = document.getElementById('anomaly_text');
-            anomalyBanner.style.display = 'block';
-            
-            const renderItem = (a) => `<li style="margin-bottom: 0.3rem;"><strong>${escapeHtml(String(a.Date))} (${escapeHtml(String(a.Type))}):</strong> ${escapeHtml(String(a.Parameter))} is logged as <strong>${escapeHtml(String(a.Value))}</strong> (Expected: ${escapeHtml(String(a.Expected))})</li>`;
-            let msg = `The system automatically scanned all Excel sheets during startup and found <strong>${dashboardData.anomalies.length}</strong> suspiciously large or small numbers (likely typos):<br><br><ul style="margin: 0; padding-left: 1.5rem;">`;
-            msg += dashboardData.anomalies.slice(0, 5).map(renderItem).join('');
-            msg += `</ul>`;
-            if (dashboardData.anomalies.length > 5) {
-                msg += `<details style="margin-top: 0.4rem;"><summary style="cursor: pointer; font-weight: 600;">Show all ${dashboardData.anomalies.length} warnings (${dashboardData.anomalies.length - 5} more)</summary><ul style="margin: 0.4rem 0 0; padding-left: 1.5rem;">${dashboardData.anomalies.slice(5).map(renderItem).join('')}</ul></details>`;
+            if (anomalyBanner) anomalyBanner.style.display = 'block';
+            if (textDiv) {
+                const anomalies = dashboardData.anomalies;
+                const first = anomalies[0];
+                const renderItem = (a) => `<li><strong>${escapeHtml(String(a.Date))} (${escapeHtml(String(a.Type))}):</strong> ${escapeHtml(String(a.Parameter))} logged as <strong>${escapeHtml(String(a.Value))}</strong> <span class="alarm-expected">(Expected: ${escapeHtml(String(a.Expected))})</span></li>`;
+                textDiv.innerHTML = `
+                    <details class="alarm-details">
+                        <summary class="alarm-summary">
+                            <span class="alarm-badge">Lab Warning</span>
+                            <span class="alarm-headline"><strong>${anomalies.length}</strong> data anomalies detected · Latest: ${escapeHtml(String(first.Date))} (${escapeHtml(String(first.Type))}) ${escapeHtml(String(first.Parameter))} = <strong>${escapeHtml(String(first.Value))}</strong></span>
+                            <span class="alarm-toggle">Inspect all</span>
+                        </summary>
+                        <div class="alarm-drawer">
+                            <p class="alarm-hint">Review these dates in the Excel workbooks, fix any data-entry typos, and click <strong>Refresh Data</strong> to clear.</p>
+                            <ul class="alarm-list">${anomalies.map(renderItem).join('')}</ul>
+                        </div>
+                    </details>
+                `;
             }
-            msg += `<br>Please check these dates in your Excel sheets, fix the typos, and click <strong>"Refresh Data"</strong> to clear this warning.`;
-            textDiv.innerHTML = msg;
         } else if (anomalyBanner) {
             anomalyBanner.style.display = 'none';
         }
@@ -383,10 +391,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Error loading dashboard data:', error);
         document.querySelector('.container').innerHTML = `
-            <div class="glass" style="padding: 2.5rem; text-align: center; color: var(--status-alarm); max-width: 600px; margin: 3rem auto;">
+            <div class="panel error-state">
                 <h2>Error Initializing Dashboard</h2>
-                <p style="margin: 1rem 0; color: var(--text-secondary);">Ensure the FastAPI server is running (e.g. <code>./start_dashboard.sh</code>) and is accessible at <code>http://127.0.0.1:8500</code>.</p>
-                <p style="font-size: 0.85rem; color: var(--text-muted); font-family: monospace;">${escapeHtml(error.message)}</p>
+                <p class="error-state-desc">Ensure the FastAPI server is running (e.g. <code>./start_dashboard.sh</code>) and is accessible at <code>http://127.0.0.1:8500</code>.</p>
+                <p class="error-state-detail">${escapeHtml(error?.message || String(error))}</p>
             </div>
         `;
     }
@@ -449,8 +457,9 @@ const eraLinePlugin = {
         ctx.roundRect(lx - 3, ly - 11, tw + 8, 18, 4);
         ctx.fill();
 
-        // Label text
-        ctx.fillStyle = warnColor;
+        // Label text (pill fill --chart-tooltip is dark in both themes)
+        const isLightTheme = document.documentElement.dataset.themeResolved === 'light';
+        ctx.fillStyle = isLightTheme ? '#f0b35e' : warnColor;
         ctx.textBaseline = 'top';
         ctx.fillText(label, lx + 1, ly - 9);
 
@@ -463,7 +472,7 @@ const eraLinePlugin = {
         ctx.beginPath();
         ctx.roundRect(sx - 3, ly - 11, sw + 8, 18, 4);
         ctx.fill();
-        ctx.fillStyle = themeToken('--text-secondary');
+        ctx.fillStyle = '#e2e8f0';
         ctx.fillText(sparseLabel, sx + 1, ly - 9);
 
         ctx.restore();
@@ -815,7 +824,7 @@ function updateEraSubtitle(param) {
     const eraYear = dashboardData.strength28Era;
     if (param === 'Strength_28D' && eraYear) {
         subtitle.style.display = 'block';
-        subtitle.innerHTML = `⚠️ 28-day strength data becomes reliably available from <strong>${eraYear}</strong> onward. Earlier years have sparse 28D records (mostly 2-day tests only).`;
+        subtitle.innerHTML = `<span class="status-tag status-tag--warning">Note</span> 28-day strength data becomes reliably available from <strong>${escapeHtml(String(eraYear))}</strong> onward. Earlier years have sparse 28D records (mostly 2-day tests only).`;
     } else {
         subtitle.style.display = 'none';
     }
@@ -1293,24 +1302,22 @@ function setupMLPredictor() {
                         const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
                         const hasActual = actualResultBox && actualResultBox.style.display !== 'none';
 
+                        dateBox.style.removeProperty('background');
+                        dateBox.style.removeProperty('border-color');
+                        dateVal.style.removeProperty('color');
+
                         if (hasActual) {
                             dateLabel.innerText = 'Actual Break Date:';
                             dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
-                            dateBox.style.background = 'var(--status-info-bg)';
-                            dateBox.style.borderColor = 'var(--status-info-border)';
-                            dateVal.style.color = 'var(--status-info)';
+                            dateBox.dataset.tone = 'info';
                         } else if (baseDateObj < new Date()) {
                             dateLabel.innerText = '28-Day Test Status:';
                             dateVal.innerText = 'Unrecorded test';
-                            dateBox.style.background = 'var(--status-warning-bg, #fef3c7)';
-                            dateBox.style.borderColor = 'var(--status-warning-border, #f59e0b)';
-                            dateVal.style.color = 'var(--status-warning, #b45309)';
+                            dateBox.dataset.tone = 'warning';
                         } else {
                             dateLabel.innerText = 'Expected 28-Day Break Date:';
                             dateVal.innerText = baseDateObj.toLocaleDateString(undefined, options);
-                            dateBox.style.background = 'var(--status-nominal-bg)';
-                            dateBox.style.borderColor = 'var(--status-nominal-border)';
-                            dateVal.style.color = 'var(--status-nominal)';
+                            dateBox.dataset.tone = 'nominal';
                         }
                         dateBox.style.display = 'flex';
                     }
@@ -1341,22 +1348,20 @@ function setupMLPredictor() {
 // Populate lowest 28-day strength days
 function populateLowStrengthDays() {
     const tbody = document.querySelector('#anomalyTable tbody');
+    if (!tbody) return;
     tbody.innerHTML = '';
     const rows = dashboardData.lowStrengthDays || dashboardData.anomalies || [];
-    
-    rows.forEach((a, i) => {
+
+    rows.forEach((a) => {
         const tr = document.createElement('tr');
-        tr.style.animation = `fadeInUp 0.5s ease-out ${i * 0.08}s forwards`;
-        tr.style.opacity = '0';
-        
         const strVal = a.Strength;
-        const color = strVal < 35 ? 'var(--status-alarm)' : 'var(--status-warning)';
-        const badgeType = (a.Type || 'opc').toLowerCase();
-        
+        const tone = strVal < 35 ? 'alarm' : 'warning';
+        const badgeType = escapeHtml(String(a.Type || 'opc').toLowerCase());
+
         tr.innerHTML = `
             <td>${escapeHtml(a.Date)}</td>
             <td><span class="cement-badge cement-badge-${badgeType}">${escapeHtml(a.Type)}</span></td>
-            <td style="color: ${color}; font-weight: 700;">${escapeHtml(strVal)}</td>
+            <td class="low-str-val" data-tone="${tone}">${escapeHtml(strVal)}</td>
             <td>${escapeHtml(a.C3S)}</td>
         `;
         tbody.appendChild(tr);
@@ -1785,11 +1790,11 @@ async function calculateRawMixProportions() {
         }
 
         document.getElementById('raw_result_dry').innerHTML = Object.entries(data.dry_proportions)
-            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${escapeHtml(k)}:</span> <strong>${escapeHtml(v)}%</strong></li>`)
+            .map(([k, v]) => `<li class="prop-row"><span class="prop-name">${escapeHtml(k)}</span><strong class="prop-val">${escapeHtml(v)}%</strong></li>`)
             .join('');
 
         document.getElementById('raw_result_wet').innerHTML = Object.entries(data.wet_proportions)
-            .map(([k, v]) => `<li><span style="display:inline-block; width:120px;">${escapeHtml(k)}:</span> <strong>${escapeHtml(v)}%</strong></li>`)
+            .map(([k, v]) => `<li class="prop-row"><span class="prop-name">${escapeHtml(k)}</span><strong class="prop-val">${escapeHtml(v)}%</strong></li>`)
             .join('');
 
         const cl = data.clinker;
@@ -1827,7 +1832,7 @@ async function calculateRawMixProportions() {
             adviceContainer.removeAttribute('style');
             diags.forEach(d => appendStatus(
                 adviceContainer,
-                d.severity === 'error' ? '🚨' : '⚠️',
+                d.severity === 'error' ? 'Error:' : 'Warning:',
                 d.message,
                 'margin-bottom:0.5rem;'
             ));
@@ -1835,7 +1840,7 @@ async function calculateRawMixProportions() {
             adviceContainer.className = 'advice-card';
             adviceContainer.dataset.tone = 'nominal';
             adviceContainer.removeAttribute('style');
-            appendStatus(adviceContainer, '✅ Optimal Sintering Design:', `Moduli targets satisfied (Liquid content: ${data.liquid_content}%, C₃A: ${ph.C3A}%).`);
+            appendStatus(adviceContainer, 'Optimal Sintering Design:', `Moduli targets satisfied (Liquid content: ${data.liquid_content}%, C₃A: ${ph.C3A}%).`);
         }
 
         const typesafe = data.typesafe || {};
@@ -2183,7 +2188,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     Ask about plant results or search the reference documents.
                 </div>
             `;
-            citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">Matching reference passages will appear here.</div>`;
+            citedSources.innerHTML = `<div class="sources-empty">Matching reference passages will appear here.</div>`;
         });
     }
 
@@ -2270,8 +2275,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         ? `<span>TypeSafe: ${(src.typesafeScore * 100).toFixed(0)}%</span>`
                         : '';
                     item.innerHTML = `
-                        <div style="font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(src.file)}">${escapeHtml(src.file)}</div>
-                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-top:0.2rem; color:var(--text-secondary);">
+                        <div class="source-title" title="${escapeHtml(src.file)}">${escapeHtml(src.file)}</div>
+                        <div class="source-meta">
                             <span>Page ${escapeHtml(src.page)}</span>
                             <span>TF-IDF: ${(src.score * 100).toFixed(0)}%</span>
                             ${typeSafeScore}
@@ -2280,7 +2285,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     citedSources.appendChild(item);
                 });
             } else {
-                citedSources.innerHTML = `<div style="text-align: center; padding: 2rem 0; color: var(--text-muted);">No matching reference passages.</div>`;
+                citedSources.innerHTML = `<div class="sources-empty">No matching reference passages.</div>`;
             }
 
         } catch (err) {
@@ -2363,11 +2368,13 @@ function renderSummaryCards(data) {
     const strengthEl = document.getElementById('avgStrength');
     if (strengthEl) {
         strengthEl.innerHTML = `
-            <div style="font-size: 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem;">
-                <div><span style="color: var(--cement-opc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'} <span class="unit">MPa</span></div>
-                <div><span style="color: var(--cement-src); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'} <span class="unit">MPa</span></div>
-                <div><span style="color: var(--cement-sbc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'} <span class="unit">MPa</span></div>
-                ${s.overall !== undefined && s.overall !== null ? `<div style="border-top: 1px dashed var(--panel-border); margin-top: 0.2rem; padding-top: 0.2rem; font-size: 0.8rem; color: var(--text-secondary);">Avg: <strong style="color: var(--text-primary); font-size: 0.95rem;">${s.overall}</strong> <span class="unit">MPa</span></div>` : ''}
+            <div class="kpi-composite">
+                <div class="kpi-primary"><span class="kpi-overall">${escapeHtml(s.overall ?? '--')}</span> <span class="unit">MPa</span></div>
+                <div class="kpi-breakdown">
+                    <span class="kpi-chip"><i class="dot dot--opc"></i>OPC <strong>${escapeHtml(s.OPC ?? '--')}</strong></span>
+                    <span class="kpi-chip"><i class="dot dot--src"></i>SRC <strong>${escapeHtml(s.SRC ?? '--')}</strong></span>
+                    <span class="kpi-chip"><i class="dot dot--sbc"></i>SBC <strong>${escapeHtml(s.SBC ?? '--')}</strong></span>
+                </div>
             </div>`;
     }
 
@@ -2376,11 +2383,13 @@ function renderSummaryCards(data) {
     const c3sEl = document.getElementById('avgC3S');
     if (c3sEl) {
         c3sEl.innerHTML = `
-            <div style="font-size: 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem;">
-                <div><span style="color: var(--cement-opc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">OPC:</span> ${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'} <span class="unit">%</span></div>
-                <div><span style="color: var(--cement-src); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SRC:</span> ${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'} <span class="unit">%</span></div>
-                <div><span style="color: var(--cement-sbc); font-size: 0.9rem; display: inline-block; width: 45px; text-align: left;">SBC:</span> ${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'} <span class="unit">%</span></div>
-                ${c.overall !== undefined && c.overall !== null ? `<div style="border-top: 1px dashed var(--panel-border); margin-top: 0.2rem; padding-top: 0.2rem; font-size: 0.8rem; color: var(--text-secondary);">Avg: <strong style="color: var(--text-primary); font-size: 0.95rem;">${c.overall}</strong> <span class="unit">%</span></div>` : ''}
+            <div class="kpi-composite">
+                <div class="kpi-primary"><span class="kpi-overall">${escapeHtml(c.overall ?? '--')}</span> <span class="unit">%</span></div>
+                <div class="kpi-breakdown">
+                    <span class="kpi-chip"><i class="dot dot--opc"></i>OPC <strong>${escapeHtml(c.OPC ?? '--')}</strong></span>
+                    <span class="kpi-chip"><i class="dot dot--src"></i>SRC <strong>${escapeHtml(c.SRC ?? '--')}</strong></span>
+                    <span class="kpi-chip"><i class="dot dot--sbc"></i>SBC <strong>${escapeHtml(c.SBC ?? '--')}</strong></span>
+                </div>
             </div>`;
     }
 
@@ -2426,7 +2435,7 @@ function renderSeasonalBenchmarkCards(data) {
 
     const breakdown = data.seasonalBreakdown || [];
     if (!breakdown.length) {
-        container.innerHTML = '<div style="grid-column: 1 / -1; padding: 1rem; text-align: center; color: var(--text-secondary);">No seasonal data available</div>';
+        container.innerHTML = '<div class="season-empty">No seasonal data available</div>';
         return;
     }
 
@@ -2434,64 +2443,26 @@ function renderSeasonalBenchmarkCards(data) {
         const isCurrent = _currentPeriodState.activeKey === ('season_' + item.key);
         const s = item.avgStrength || {};
         const c = item.avgC3S || {};
-        const cardBorder = isCurrent ? 'var(--accent-strong)' : 'var(--panel-border)';
-        const cardBg = isCurrent ? 'var(--accent-subtle)' : 'var(--panel-bg)';
-        const cardShadow = isCurrent ? '0 0 12px rgba(72, 169, 148, 0.25)' : 'none';
 
         return `
-            <div class="card seasonal-card-interactive" data-season="${escapeHtml(item.key)}" 
-                 style="background: ${cardBg} !important; border: 1px solid ${cardBorder}; border-radius: var(--radius-panel); padding: 0.75rem 0.85rem; cursor: pointer; transition: all 180ms ease; box-shadow: ${cardShadow};"
-                 title="Click to filter summary cards for ${escapeHtml(item.name)}">
-                
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.35rem;">
-                    <div style="font-weight: 700; font-size: 0.85rem; color: ${isCurrent ? 'var(--accent-strong)' : 'var(--text-primary)'}; display: flex; align-items: center; gap: 0.3rem;">
-                        <span>${escapeHtml(item.icon)}</span>
-                        <span>${escapeHtml(item.name)}</span>
-                    </div>
-                    <span style="font-size: 0.7rem; color: var(--text-secondary);">${escapeHtml(item.label)}</span>
-                </div>
-
-                <!-- 28-Day Strength Metric -->
-                <div style="margin-bottom: 0.45rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                        <span style="font-size: 0.68rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">28D Strength</span>
-                        <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${s.overall !== null && s.overall !== undefined ? s.overall : '--'} <span class="unit" style="font-size: 0.7rem;">MPa</span></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-family: var(--font-mono); margin-top: 0.15rem; color: var(--text-muted);">
-                        <span>OPC: <strong style="color: var(--cement-opc);">${s.OPC ?? '--'}</strong></span>
-                        <span>SRC: <strong style="color: var(--cement-src);">${s.SRC ?? '--'}</strong></span>
-                        <span>SBC: <strong style="color: var(--cement-sbc);">${s.SBC ?? '--'}</strong></span>
-                    </div>
-                </div>
-
-                <!-- C3S Metric -->
-                <div style="margin-bottom: 0.45rem; border-top: 1px dashed var(--panel-border); padding-top: 0.35rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                        <span style="font-size: 0.68rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">C₃S Content</span>
-                        <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${c.overall !== null && c.overall !== undefined ? c.overall : '--'} <span class="unit" style="font-size: 0.7rem;">%</span></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; font-family: var(--font-mono); margin-top: 0.15rem; color: var(--text-muted);">
-                        <span>OPC: <strong style="color: var(--cement-opc);">${c.OPC ?? '--'}</strong></span>
-                        <span>SRC: <strong style="color: var(--cement-src);">${c.SRC ?? '--'}</strong></span>
-                        <span>SBC: <strong style="color: var(--cement-sbc);">${c.SBC ?? '--'}</strong></span>
-                    </div>
-                </div>
-
-                <!-- Records count footer -->
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: var(--text-secondary); border-top: 1px solid var(--panel-border); padding-top: 0.3rem;">
-                    <span>${item.totalRecords.toLocaleString()} tests</span>
-                    <span style="color: ${isCurrent ? 'var(--accent-strong)' : 'var(--text-muted)'}; font-weight: ${isCurrent ? '700' : 'normal'};">
-                        ${isCurrent ? '● Active' : 'Select →'}
-                    </span>
-                </div>
-            </div>
+            <button type="button" class="season-pill ${isCurrent ? 'is-active' : ''}" data-season="${escapeHtml(item.key)}" title="Filter averages for ${escapeHtml(item.name)}">
+                <span class="season-pill-top">
+                    <span class="season-pill-name">${escapeHtml(item.name)}</span>
+                    <span class="season-pill-months">${escapeHtml(item.label)}</span>
+                </span>
+                <span class="season-pill-bottom">
+                    <span class="season-metric">28D <strong>${escapeHtml(s.overall ?? '--')}</strong><small> MPa</small></span>
+                    <span class="season-metric">C₃S <strong>${escapeHtml(c.overall ?? '--')}</strong><small>%</small></span>
+                    <span class="season-count">${Number(item.totalRecords || 0).toLocaleString()}</span>
+                </span>
+            </button>
         `;
     }).join('');
 
-    // Attach click handlers to the seasonal benchmark cards
-    container.querySelectorAll('.seasonal-card-interactive').forEach(card => {
-        card.addEventListener('click', () => {
-            const seasonKey = card.getAttribute('data-season');
+    // Attach click handlers to the seasonal benchmark pills
+    container.querySelectorAll('.season-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            const seasonKey = pill.getAttribute('data-season');
             setActivePeriod('season_' + seasonKey);
         });
     });
@@ -2503,7 +2474,7 @@ function renderSeasonalTable(data) {
 
     const breakdown = data.seasonalBreakdown || [];
     if (!breakdown.length) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 1rem; color: var(--text-secondary);">No seasonal data available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="col-muted group-center">No seasonal data available</td></tr>';
         return;
     }
 
@@ -2511,22 +2482,19 @@ function renderSeasonalTable(data) {
         const isCurrent = _currentPeriodState.activeKey === ('season_' + item.key);
         const s = item.avgStrength || {};
         const c = item.avgC3S || {};
-        const rowStyle = isCurrent 
-            ? 'background: var(--panel-header); font-weight: 600; cursor: pointer;' 
-            : 'cursor: pointer; transition: background 120ms ease;';
         return `
-            <tr class="season-row" data-season="${escapeHtml(item.key)}" style="${rowStyle}" title="Click to filter dashboard by ${escapeHtml(item.name)}">
-                <td style="padding: 0.45rem 0.6rem;">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</td>
-                <td style="padding: 0.45rem 0.6rem; color: var(--text-secondary);">${escapeHtml(item.label)}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono);">${item.totalRecords.toLocaleString()}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: var(--cement-opc);">${s.OPC !== null && s.OPC !== undefined ? s.OPC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-src);">${s.SRC !== null && s.SRC !== undefined ? s.SRC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-sbc);">${s.SBC !== null && s.SBC !== undefined ? s.SBC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); font-weight: 650; color: var(--text-primary);">${s.overall !== null && s.overall !== undefined ? s.overall : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); border-left: 1px solid var(--panel-border); color: var(--cement-opc);">${c.OPC !== null && c.OPC !== undefined ? c.OPC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-src);">${c.SRC !== null && c.SRC !== undefined ? c.SRC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); color: var(--cement-sbc);">${c.SBC !== null && c.SBC !== undefined ? c.SBC : '--'}</td>
-                <td style="padding: 0.45rem 0.6rem; text-align: right; font-family: var(--font-mono); font-weight: 650; color: var(--text-primary);">${c.overall !== null && c.overall !== undefined ? c.overall : '--'}</td>
+            <tr class="season-row ${isCurrent ? 'is-active' : ''}" data-season="${escapeHtml(item.key)}" title="Click to filter dashboard by ${escapeHtml(item.name)}">
+                <td>${escapeHtml(item.name)}</td>
+                <td class="col-muted">${escapeHtml(item.label)}</td>
+                <td class="num">${Number(item.totalRecords || 0).toLocaleString()}</td>
+                <td class="num col-divider col-opc">${escapeHtml(s.OPC ?? '--')}</td>
+                <td class="num col-src">${escapeHtml(s.SRC ?? '--')}</td>
+                <td class="num col-sbc">${escapeHtml(s.SBC ?? '--')}</td>
+                <td class="num col-overall">${escapeHtml(s.overall ?? '--')}</td>
+                <td class="num col-divider col-opc">${escapeHtml(c.OPC ?? '--')}</td>
+                <td class="num col-src">${escapeHtml(c.SRC ?? '--')}</td>
+                <td class="num col-sbc">${escapeHtml(c.SBC ?? '--')}</td>
+                <td class="num col-overall">${escapeHtml(c.overall ?? '--')}</td>
             </tr>
         `;
     }).join('');
@@ -2601,7 +2569,9 @@ function setupPeriodAveragesControls(initialAverages) {
         toggleBtn.addEventListener('click', () => {
             const isHidden = drawer.style.display === 'none' || !drawer.style.display;
             drawer.style.display = isHidden ? 'block' : 'none';
-            toggleBtn.textContent = isHidden ? '✕ Hide Detailed Table' : '📊 Detailed Table';
+            toggleBtn.setAttribute('aria-expanded', String(isHidden));
+            toggleBtn.classList.toggle('is-active', isHidden);
+            toggleBtn.textContent = isHidden ? 'Hide Table' : 'Seasons Table';
         });
     }
 }
@@ -2716,22 +2686,21 @@ function renderProcessEconomics(econ) {
     const isAbove = fuel.status === 'penalty';
     const isBelow = fuel.status === 'optimal';
     const label = isAbove ? 'Above consumption benchmark' : isBelow ? 'Below consumption benchmark' : 'At consumption benchmark';
-    const rgb = isAbove ? '239, 68, 68' : isBelow ? '16, 185, 129' : '72, 169, 148';
+    const tone = isAbove ? 'alarm' : isBelow ? 'nominal' : 'info';
     const costLabel = dailyVarCost > 0 ? 'cost increase' : dailyVarCost < 0 ? 'savings' : 'cost change';
     const safeCurrency = escapeHtml(cur);
 
     if (badge) {
-        badge.style.background = `rgba(${rgb}, 0.15)`;
-        badge.style.color = `rgb(${rgb})`;
-        badge.style.borderColor = `rgb(${rgb})`;
+        badge.dataset.tone = tone;
+        badge.removeAttribute('style');
         badge.textContent = label;
     }
     if (alertBox) {
-        alertBox.style.borderColor = `rgba(${rgb}, 0.4)`;
-        alertBox.style.background = `rgba(${rgb}, 0.06)`;
+        alertBox.dataset.tone = tone;
+        alertBox.removeAttribute('style');
         alertBox.innerHTML = `
-            <div style="font-weight:700; color:rgb(${rgb}); font-size:0.85rem; margin-bottom:0.25rem;">${label}</div>
-            <div style="font-size:0.78rem; line-height:1.45; color:var(--text-primary);">
+            <div class="econ-alert-title">${label}</div>
+            <div class="econ-alert-summary">
                 Heat consumption: <strong>${Number(fuel.actual_heat).toLocaleString()} kcal/kg clinker</strong>
                 vs benchmark ${Number(baseline.standard_heat).toLocaleString()}.
                 HFO calorific value: <strong>${Number(fuel.actual_calorific).toLocaleString()} kcal/kg</strong>
@@ -2741,7 +2710,7 @@ function renderProcessEconomics(econ) {
                 a change of <strong>${varKg.toLocaleString(undefined, { signDisplay: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg/t</strong>
                 (${varPct.toLocaleString(undefined, { signDisplay: 'always', minimumFractionDigits: 1, maximumFractionDigits: 1 })}%).
             </div>
-            <div style="margin-top:0.4rem; display:flex; flex-wrap:wrap; gap:0.75rem; font-size:0.78rem; font-family:var(--font-mono);">
+            <div class="econ-alert-metrics">
                 <span>Fuel cost difference: <strong>${varCostCl < 0 ? '-' : varCostCl > 0 ? '+' : ''}${safeCurrency}${Math.abs(varCostCl).toFixed(2)} / ton clinker</strong></span>
                 <span>Daily fuel difference: <strong>${dailyVarFuel.toLocaleString(undefined, { signDisplay: 'always', minimumFractionDigits: 1, maximumFractionDigits: 1 })} tons / day</strong></span>
                 <span>Daily ${costLabel}: <strong>${safeCurrency}${Math.abs(dailyVarCost).toLocaleString(undefined, { maximumFractionDigits: 0 })} / day</strong></span>
@@ -2757,10 +2726,10 @@ function renderProcessEconomics(econ) {
         Object.entries(raw.breakdown_per_t_clinker).forEach(([mat, cost]) => {
             const unitPrice = raw.prices ? raw.prices[mat] : 0;
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0.4rem; background:var(--panel-muted); border-radius:2px;';
+            row.className = 'econ-kv-row';
             row.innerHTML = `
-                <span style="color:var(--text-secondary);">${escapeHtml(mat)} (@ ${safeCurrency}${Number(unitPrice).toFixed(2)}/t):</span>
-                <strong style="font-family:var(--font-mono);">${safeCurrency}${Number(cost).toFixed(2)} / ton cl</strong>
+                <span>${escapeHtml(mat)} (@ ${safeCurrency}${Number(unitPrice).toFixed(2)}/t)</span>
+                <strong>${safeCurrency}${Number(cost).toFixed(2)} / ton cl</strong>
             `;
             breakdownList.appendChild(row);
         });
