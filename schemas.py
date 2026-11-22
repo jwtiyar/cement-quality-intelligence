@@ -94,6 +94,14 @@ class RawMixRequest(BaseModel):
     hfo: HFO = Field(default_factory=HFO)
     economics: Optional[ProcessEconomics] = Field(default_factory=ProcessEconomics)
 
+    @model_validator(mode="after")
+    def check_mode_payload(self) -> Self:
+        if self.mode == "solve" and self.targets is None:
+            raise ValueError("targets are required when mode is 'solve'")
+        if self.mode in ("recipe", "calc") and self.recipe is None:
+            raise ValueError("recipe is required when mode is 'recipe'")
+        return self
+
 
 class ChatTurn(BaseModel):
     role: Literal["user", "model"] = "user"

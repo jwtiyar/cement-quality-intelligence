@@ -64,8 +64,11 @@ def _validate_materials(materials: dict[str, Any]) -> dict[str, MaterialComp]:
         except TypeError as e:
             raise ValueError(f"Material '{name}' has invalid fields: {e}") from e
         for field in _OXIDE_FIELDS:
-            if not math.isfinite(getattr(comp, field)):
+            val = getattr(comp, field)
+            if not math.isfinite(val):
                 raise ValueError(f"Material '{name}' {field} must be a finite number.")
+            if not 0 <= val <= 100:
+                raise ValueError(f"Material '{name}' {field} must be in [0, 100].")
         if not 0 <= comp.LOI < 100:
             raise ValueError(f"Material '{name}' LOI must be in [0, 100).")
         if not 0 <= comp.H2O < 100:
@@ -81,6 +84,8 @@ def _validate_hfo(hfo: dict[str, Any]) -> tuple[float, float, float]:
     for name, v in (("heat", heat), ("calorific", calorific), ("sulfur", sulfur)):
         if not math.isfinite(v):
             raise ValueError(f"hfo {name} must be a finite number.")
+    if heat < 0:
+        raise ValueError("hfo heat must be non-negative.")
     if calorific <= 0:
         raise ValueError("hfo calorific value must be greater than 0.")
     if not 0 <= sulfur <= 100:
@@ -185,7 +190,12 @@ def _solve_constrained(
         ]
         return sum(v * v for v in residuals)
 
-    start = [min(max(v, 0.0), 100.0) for v in x0] if x0 else [25.0] * 4
+    if x0:
+        clipped = [max(0.0, float(v)) for v in x0]
+        total = sum(clipped)
+        start = [(v / total) * 100.0 for v in clipped] if total > 0 else [25.0] * 4
+    else:
+        start = [25.0] * 4
     cons = {"type": "eq", "fun": lambda x: sum(x) - 100.0}
     res = minimize(
         objective,
@@ -196,7 +206,7 @@ def _solve_constrained(
     )
     if not res.success:
         raise ValueError("Could not find a valid raw mix — review material chemistry and targets.")
-    return [max(0.0, v) for v in res.x]
+    return [float(max(0.0, v)) for v in res.x]
 
 
 def _calculate_process_economics(
@@ -330,6 +340,8 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     cl_basis = _clinker_basis(materials)
 
     if mode == "solve":
+        if payload.get("targets") is None:
+            raise ValueError("Missing targets for solve mode.")
         target_lsf, target_sm, target_am = _validate_targets(payload["targets"])
 
         def calc_deltas(comp: dict[str, float]) -> dict[str, float]:
@@ -350,12 +362,14 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
         B = [0.0, 0.0, 0.0, 100.0]
         X = _solve4x4(M, B)
         if X is not None and all(v >= -1e-9 for v in X):
-            x_cl = list(X)
+            x_cl = [float(max(0.0, v)) for v in X]
             solve_method = "exact"
         else:
             x_cl = _solve_constrained(deltas, B[:3], X)
             solve_method = "constrained"
     else:
+        if payload.get("recipe") is None:
+            raise ValueError("Missing recipe for recipe mode.")
         p = _validate_recipe(payload["recipe"])
         recipe_sum = sum(p)
         if recipe_sum < 99.0 or recipe_sum > 101.0:
@@ -471,7 +485,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
     if mode == "solve":
         if feasibility == "infeasible":
             explanation_parts.append(
-                f"🚨 **Targets Not Simultaneously Reachable:** residuals LSF {residuals['LSF']:+0.2f}, "
+                f"<strong>Targets Not Simultaneously Reachable:</strong> residuals LSF {residuals['LSF']:+0.2f}, "
                 f"SM {residuals['SM']:+0.2f}, AM {residuals['AM']:+0.2f} — showing the closest achievable mix."
             )
             explanation_parts.append(
@@ -479,11 +493,11 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
                 "Adjust the targets or the material chemistry (e.g. a purer iron source with lower SiO₂)."
             )
         else:
-            explanation_parts.append("✅ **Mathematically Valid Mix:**")
+            explanation_parts.append("<strong>Mathematically Valid Mix:</strong>")
             explanation_parts.append(f"<ul><li><strong>Limestone</strong> provides the majority of the CaO to hit LSF {target_lsf}.</li>")
             explanation_parts.append(f"<li><strong>Clay</strong> acts as the primary source of Alumina and Silica.</li>")
             explanation_parts.append(f"<li><strong>Sand</strong> balances the Silica Modulus (SM) to {target_sm}.</li>")
-            explanation_parts.append(f"<li><strong>Iron Ore/Pyrite</strong> adjusts the Alumina Modulus (AM) to {target_am}.</li></ul>")
+            explanation_parts.append(f"<li><strong>{corrector_label}</strong> adjusts the Alumina Modulus (AM) to {target_am}.</li></ul>")
     else:
         targets_advice = []
         if cement_type == "SRC":
@@ -492,7 +506,7 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             elif cl_lsf < 90.0:
                 targets_advice.append(f"LSF ({cl_lsf:.1f}%) is low — increase Limestone to boost C₃S and 28-day strength.")
             if cl_am > 1.0:
-                targets_advice.append(f"AM ({cl_am:.2f}) exceeds 1.0 — reduce Clay or increase Iron Ore to lower C₃A for SRC compliance.")
+                targets_advice.append(f"AM ({cl_am:.2f}) exceeds 1.0 — reduce Clay or increase {corrector_label} to lower C₃A for SRC compliance.")
             if cl_sm > 3.0:
                 targets_advice.append(f"SM ({cl_sm:.2f}) is high — add more Clay or reduce Sand to improve burnability.")
             elif cl_sm < 2.0:
@@ -503,22 +517,22 @@ def calculate_rawmix(payload: dict[str, Any]) -> dict[str, Any]:
             elif cl_lsf < 92.0:
                 targets_advice.append(f"LSF ({cl_lsf:.1f}%) is below 92% — increase Limestone to improve strength potential.")
             if cl_am > 1.8:
-                targets_advice.append(f"AM ({cl_am:.2f}) is high — increase Iron Ore supply (or reduce Clay) to lower liquid viscosity.")
+                targets_advice.append(f"AM ({cl_am:.2f}) is high — increase {corrector_label} supply (or reduce Clay) to lower liquid viscosity.")
             elif cl_am < 1.2:
-                targets_advice.append(f"AM ({cl_am:.2f}) is low — reduce Iron Ore or increase Clay to avoid sticky coating.")
+                targets_advice.append(f"AM ({cl_am:.2f}) is low — reduce {corrector_label} or increase Clay to avoid sticky coating.")
             if cl_sm > 2.8:
                 targets_advice.append(f"SM ({cl_sm:.2f}) is high — add Clay or reduce Sand to improve burnability and coating.")
             elif cl_sm < 2.0:
                 targets_advice.append(f"SM ({cl_sm:.2f}) is low — add Sand to increase liquid phase viscosity.")
 
         if targets_advice:
-            explanation_parts.append("📊 **Recipe Evaluation & Adjustment Tips:**")
+            explanation_parts.append("<strong>Recipe Evaluation &amp; Adjustment Tips:</strong>")
             explanation_parts.append("<ul>")
             for tip in targets_advice:
                 explanation_parts.append(f"<li>{tip}</li>")
             explanation_parts.append("</ul>")
         else:
-            explanation_parts.append("✅ **Recipe is within typical ranges.** No adjustments needed.")
+            explanation_parts.append("<strong>Recipe is within typical ranges.</strong> No adjustments needed.")
 
         explanation_parts.append("<br><i>Tip: Switch to <strong>Solve for Target</strong> mode if you want the solver to automatically find proportions that hit specific LSF / SM / AM targets.</i>")
 

@@ -470,3 +470,39 @@ class TestPredefinedPresets:
         fuel = result["economics"]["fuel"]
         assert fuel["actual_heat"] == 740.0
         assert fuel["status"] == "standard"
+
+    def test_explanation_uses_html_and_corrector_label_without_markdown_or_emojis(self):
+        result = calculate_rawmix({
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": {
+                "limestone": self.LIMESTONE,
+                "shale": self.CLAY,
+                "sand": self.SAND,
+                "pyrite": self.SLAG,
+            },
+            "targets": {"LSF": 95.0, "SM": 2.35, "AM": 1.40},
+            "hfo": {},
+        })
+        exp = result["explanation"]
+        assert "**" not in exp
+        assert "Iron Ore" not in exp
+        assert "<strong>Slag</strong>" in exp
+
+    def test_direct_validation_rejects_negative_oxide_and_negative_heat(self):
+        mats = {k: dict(v) for k, v in BASE_MATERIALS.items()}
+        mats["limestone"]["CaO"] = -1.0
+        with pytest.raises(ValueError, match="\\[0, 100\\]"):
+            calculate_rawmix({"mode": "solve", "materials": mats, "targets": {"LSF": 95, "SM": 2.4, "AM": 1.5}})
+
+        with pytest.raises(ValueError, match="heat"):
+            calculate_rawmix({
+                "mode": "solve",
+                "materials": BASE_MATERIALS,
+                "targets": {"LSF": 95, "SM": 2.4, "AM": 1.5},
+                "hfo": {"heat": -10, "calorific": 9800, "sulfur": 2.5},
+            })
+
+    def test_constrained_proportions_are_native_floats(self):
+        result = calculate_rawmix(solve_payload(targets={"LSF": 95.0, "SM": 2.4, "AM": 0.1}))
+        assert all(type(v) is float for v in result["dry_proportions"].values())

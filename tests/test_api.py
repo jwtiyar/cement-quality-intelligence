@@ -147,6 +147,21 @@ class TestRawmixEndpoint:
         })
         assert resp.status_code == 422
 
+    def test_missing_targets_or_recipe_rejected_422(self, client):
+        resp_solve = client.post("/api/rawmix/calculate", json={
+            "mode": "solve",
+            "cement_type": "OPC",
+            "materials": BASE_MATERIALS,
+        })
+        assert resp_solve.status_code == 422
+
+        resp_recipe = client.post("/api/rawmix/calculate", json={
+            "mode": "recipe",
+            "cement_type": "OPC",
+            "materials": BASE_MATERIALS,
+        })
+        assert resp_recipe.status_code == 422
+
     def test_negative_oxide_rejected_422(self, client):
         mats = {k: dict(v) for k, v in BASE_MATERIALS.items()}
         mats["shale"]["CaO"] = -5.0

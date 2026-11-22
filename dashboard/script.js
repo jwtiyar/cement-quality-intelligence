@@ -1853,7 +1853,7 @@ async function calculateRawMixProportions() {
             const action = typesafe.requires_human_review
                 ? labels.stop_and_review
                 : (labels[typesafe.action] || labels.stop_and_review);
-            appendStatus(adviceContainer, 'TypeSafe review:', `${action} (${(typesafe.confidence * 100).toFixed(0)}% confidence).`, 'margin-top:0.7rem;');
+            appendStatus(adviceContainer, 'Process review:', `${action} (${(typesafe.confidence * 100).toFixed(0)}% confidence).`, 'margin-top:0.7rem;');
             const probabilities = Object.entries(typesafe.probabilities || {})
                 .map(([name, value]) => `${labels[name] || name}: ${(value * 100).toFixed(0)}%`)
                 .join(' · ');
